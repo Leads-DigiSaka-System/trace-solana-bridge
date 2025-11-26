@@ -1,0 +1,274 @@
+{
+  "address": "6NcVSFj9gGYtSDWz1EPxY9BM2QZRrZ49fpadK6bACTgk",
+  "metadata": {
+    "name": "rice_supply_chain",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "add_transaction",
+      "discriminator": [
+        48,
+        96,
+        174,
+        112,
+        81,
+        30,
+        239,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "transaction",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "from_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "to_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "quantity",
+          "type": "u64"
+        },
+        {
+          "name": "unit_price",
+          "type": "u64"
+        },
+        {
+          "name": "payment_reference",
+          "type": "u8"
+        },
+        {
+          "name": "batch_id",
+          "type": "u64"
+        },
+        {
+          "name": "moisture",
+          "type": "u64"
+        },
+        {
+          "name": "status",
+          "type": "u8"
+        },
+        {
+          "name": "is_test",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "create_transaction",
+      "discriminator": [
+        227,
+        193,
+        53,
+        239,
+        55,
+        126,
+        112,
+        105
+      ],
+      "accounts": [
+        {
+          "name": "transaction",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "from_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "to_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "quantity",
+          "type": "u64"
+        },
+        {
+          "name": "unit_price",
+          "type": "u64"
+        },
+        {
+          "name": "payment_reference",
+          "type": "u8"
+        },
+        {
+          "name": "nonce",
+          "type": "u8"
+        },
+        {
+          "name": "batch_id",
+          "type": "u64"
+        },
+        {
+          "name": "moisture",
+          "type": "u64"
+        },
+        {
+          "name": "status",
+          "type": "u8"
+        },
+        {
+          "name": "is_test",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "update_transaction",
+      "discriminator": [
+        251,
+        71,
+        35,
+        36,
+        240,
+        56,
+        180,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "transaction",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "quantity",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "unit_price",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "payment_reference",
+          "type": {
+            "option": "u8"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "TransactionAccount",
+      "discriminator": [
+        146,
+        125,
+        253,
+        167,
+        250,
+        226,
+        175,
+        123
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidNonce",
+      "msg": "Invalid nonce or PDA derivation"
+    },
+    {
+      "code": 6001,
+      "name": "BumpNotFound",
+      "msg": "Bump not found in context"
+    }
+  ],
+  "types": [
+    {
+      "name": "TransactionAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "from_actor_id",
+            "type": "u64"
+          },
+          {
+            "name": "to_actor_id",
+            "type": "u64"
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "unit_price",
+            "type": "u64"
+          },
+          {
+            "name": "payment_reference",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "nonce",
+            "type": "u8"
+          },
+          {
+            "name": "transaction_count",
+            "type": "u64"
+          },
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "moisture",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "is_test",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
