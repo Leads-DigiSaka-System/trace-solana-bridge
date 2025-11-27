@@ -5,16 +5,18 @@
     "paths": {
       "@coral-xyz/anchor": [
         "./node_modules/@coral-xyz/anchor"
-      ]
+      ],
     },
     // File Layout
-    // "rootDir": "./src",
-    // "outDir": "./dist",
+    "rootDir": "src",
+    "outDir": "dist",
+
 
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
     "module": "nodenext",
-    "target": "esnext",
+    "moduleResolution": "nodenext",
+    "target": "ES2021",
     "types": [],
     // For nodejs:
     // "lib": ["esnext"],
@@ -44,7 +46,11 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  }
+  },
+  "include": ["src"]
 }
