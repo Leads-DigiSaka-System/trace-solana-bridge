@@ -11,20 +11,15 @@ import { Buffer } from "buffer";
 import type { Idl } from "@coral-xyz/anchor";
 
 // ESM JSON import
-import idlJson from "./idl/rice_supply_chain.json" with { type: "json" };
+import idlJson from "./idl/digisaka_supply_chain.json" with { type: "json" };
 
 dotenv.config();
-
-// ------------------------------------------------------------
-// 1. ENVIRONMENT VALIDATION
-// ------------------------------------------------------------
 
 if (!process.env.SOLANA_PROGRAM_ID) {
     throw new Error("CRITICAL: Missing SOLANA_PROGRAM_ID in .env");
 }
-
-if (!process.env.FEE_PAYER_SECRET_KEY) {
-    throw new Error("CRITICAL: Missing FEE_PAYER_SECRET_KEY in .env");
+if (!process.env.SOLANA_SECRET_KEY) {
+    throw new Error("CRITICAL: Missing SOLANA_SECRET_KEY in .env");
 }
 
 const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID);
@@ -32,16 +27,16 @@ const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID);
 // Connection
 const connection = new Connection(
     process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
-    "confirmed"
+    "processed"
 );
 
 // Fee payer
 let secret: number[];
 
 try {
-    secret = JSON.parse(process.env.FEE_PAYER_SECRET_KEY);
+    secret = JSON.parse(process.env.SOLANA_SECRET_KEY);
 } catch {
-    throw new Error("FEE_PAYER_SECRET_KEY must be a valid JSON array of numbers");
+    throw new Error("SOLANA_SECRET_KEY must be a valid JSON array of numbers");
 }
 
 const feePayer = Keypair.fromSecretKey(new Uint8Array(secret));
@@ -52,28 +47,18 @@ const provider = new anchor.AnchorProvider(connection, wallet, {
     preflightCommitment: "confirmed",
 });
 
-// ------------------------------------------------------------
-// 2. FIXED IDL + PROGRAM INITIALIZATION (Anchor 0.32+)
-// ------------------------------------------------------------
+anchor.setProvider(provider);
 
 // Normalize JSON import
 const idlContent: Idl = idlJson as Idl;
+idlContent.address = PROGRAM_ID.toBase58();
+const ProgramClass = anchor.Program as any; 
 
-// Anchor 0.32 requires metadata.address in IDL
-if (!idlContent.metadata) idlContent.metadata = {};
-idlContent.metadata.address = PROGRAM_ID.toBase58();
-
-// Correct Program creation for Anchor 0.32
-const program = new anchor.Program(idlContent, provider);
-
+const program = new ProgramClass(idlContent, PROGRAM_ID);
 // Quick method check
 if (!program.methods) {
     throw new Error("CRITICAL: Anchor methods failed to load. IDL mismatch?");
 }
-
-// ------------------------------------------------------------
-// 3. CHECK IF PROGRAM EXISTS ON-CHAIN
-// ------------------------------------------------------------
 
 export const checkProgramInitialization = async (): Promise<boolean> => {
     try {
@@ -84,10 +69,6 @@ export const checkProgramInitialization = async (): Promise<boolean> => {
         throw new Error("Failed to communicate with Solana RPC");
     }
 };
-
-// ------------------------------------------------------------
-// 4. SUBMIT create_transaction INSTRUCTION
-// ------------------------------------------------------------
 
 export const submitActorToSolana = async (txData: any): Promise<string> => {
     const {

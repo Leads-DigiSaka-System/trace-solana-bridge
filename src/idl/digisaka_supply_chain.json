@@ -1,7 +1,7 @@
 {
-  "address": "6NcVSFj9gGYtSDWz1EPxY9BM2QZRrZ49fpadK6bACTgk",
+  "address": "766Egtd6KGZsbuQWhvnmwybpd6A3jknJNJv2W5teFzsX",
   "metadata": {
-    "name": "rice_supply_chain",
+    "name": "digisaka_supply_chain",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
@@ -22,7 +22,27 @@
       "accounts": [
         {
           "name": "transaction",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "transaction.nonce",
+                "account": "TransactionAccount"
+              }
+            ]
+          }
         },
         {
           "name": "authority",
@@ -83,7 +103,26 @@
       "accounts": [
         {
           "name": "transaction",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
         },
         {
           "name": "authority",
