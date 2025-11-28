@@ -89,6 +89,110 @@
             ]
         },
         {
+            "name": "create_actor",
+            "discriminator": [
+                46,
+                167,
+                99,
+                125,
+                120,
+                247,
+                217,
+                39
+            ],
+            "accounts": [
+                {
+                    "name": "actor",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    97,
+                                    99,
+                                    116,
+                                    111,
+                                    114
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "authority"
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "actor_id"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "authority",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "system_program",
+                    "address": "11111111111111111111111111111111"
+                }
+            ],
+            "args": [
+                {
+                    "name": "actor_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "user_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "name",
+                    "type": "string"
+                },
+                {
+                    "name": "actor_type",
+                    "type": "u8"
+                },
+                {
+                    "name": "is_active",
+                    "type": "u8"
+                },
+                {
+                    "name": "province",
+                    "type": "string"
+                },
+                {
+                    "name": "city",
+                    "type": "string"
+                },
+                {
+                    "name": "balance",
+                    "type": "u64"
+                },
+                {
+                    "name": "pin",
+                    "type": "string"
+                },
+                {
+                    "name": "address",
+                    "type": "string"
+                },
+                {
+                    "name": "farm_id",
+                    "type": "string"
+                },
+                {
+                    "name": "farmer_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "assigned_tps",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
             "name": "create_transaction",
             "discriminator": [
                 227,
@@ -223,6 +327,19 @@
     ],
     "accounts": [
         {
+            "name": "ActorAccount",
+            "discriminator": [
+                166,
+                194,
+                42,
+                108,
+                176,
+                251,
+                154,
+                163
+            ]
+        },
+        {
             "name": "TransactionAccount",
             "discriminator": [
                 146,
@@ -249,6 +366,128 @@
         }
     ],
     "types": [
+        {
+            "name": "ActorAccount",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "actor_id",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "user_id",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "name",
+                        "type": {
+                            "array": [
+                                "u8",
+                                255
+                            ]
+                        }
+                    },
+                    {
+                        "name": "name_len",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "actor_type",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "is_active",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "province",
+                        "type": {
+                            "array": [
+                                "u8",
+                                100
+                            ]
+                        }
+                    },
+                    {
+                        "name": "province_len",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "city",
+                        "type": {
+                            "array": [
+                                "u8",
+                                100
+                            ]
+                        }
+                    },
+                    {
+                        "name": "city_len",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "balance",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "pin",
+                        "type": {
+                            "array": [
+                                "u8",
+                                6
+                            ]
+                        }
+                    },
+                    {
+                        "name": "pin_len",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "address",
+                        "type": {
+                            "array": [
+                                "u8",
+                                255
+                            ]
+                        }
+                    },
+                    {
+                        "name": "address_len",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "farm_id",
+                        "type": {
+                            "array": [
+                                "u8",
+                                36
+                            ]
+                        }
+                    },
+                    {
+                        "name": "farm_id_len",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "farmer_id",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "assigned_tps",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "timestamp",
+                        "type": "i64"
+                    },
+                    {
+                        "name": "bump",
+                        "type": "u8"
+                    }
+                ]
+            }
+        },
         {
             "name": "TransactionAccount",
             "type": {
