@@ -9,8 +9,8 @@ dotenv.config();
 if (!process.env.SOLANA_PROGRAM_ID) {
     throw new Error("CRITICAL: Missing SOLANA_PROGRAM_ID in .env");
 }
-if (!process.env.SOLANA_SECRET_KEY) {
-    throw new Error("CRITICAL: Missing SOLANA_SECRET_KEY in .env");
+if (!process.env.SOLANA_FEE_PAYER_SECRET_KEY) {
+    throw new Error("CRITICAL: Missing SOLANA_FEE_PAYER_SECRET_KEY in .env");
 }
 const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID);
 // Connection
@@ -18,10 +18,10 @@ const connection = new Connection(process.env.SOLANA_RPC_URL || "https://api.dev
 // Fee payer
 let secret;
 try {
-    secret = JSON.parse(process.env.SOLANA_SECRET_KEY);
+    secret = JSON.parse(process.env.SOLANA_FEE_PAYER_SECRET_KEY);
 }
 catch {
-    throw new Error("SOLANA_SECRET_KEY must be a valid JSON array of numbers");
+    throw new Error("SOLANA_FEE_PAYER_SECRET_KEY must be a valid JSON array of numbers");
 }
 const feePayer = Keypair.fromSecretKey(new Uint8Array(secret));
 // Provider / Wallet
@@ -33,9 +33,9 @@ anchor.setProvider(provider);
 // Normalize JSON import
 const idlContent = idlJson;
 idlContent.address = PROGRAM_ID.toBase58();
-// Initialize program properly
-// Type assertion needed due to TypeScript constructor overload resolution
-const program = new anchor.Program(idlContent, PROGRAM_ID, provider);
+// Initialize program with new Anchor 0.30+ constructor (idl, provider)
+// The program ID is read from idl.address
+const program = new anchor.Program(idlContent, provider);
 // Quick method check
 if (!program.methods) {
     throw new Error("CRITICAL: Anchor methods failed to load. IDL mismatch?");
@@ -45,7 +45,15 @@ console.log("Program initialized. Available methods:", Object.keys(program.metho
 export const checkProgramInitialization = async () => {
     try {
         const acc = await connection.getAccountInfo(PROGRAM_ID);
-        return acc !== null;
+        if (acc === null) {
+            console.error("Program account not found:", PROGRAM_ID.toBase58());
+            return false;
+        }
+        if (!acc.executable) {
+            console.error("Program account exists but is not executable:", PROGRAM_ID.toBase58());
+            return false;
+        }
+        return true;
     }
     catch (err) {
         console.error("Error during program initialization check:", err);
