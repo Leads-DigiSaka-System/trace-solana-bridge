@@ -282,6 +282,106 @@
       ]
     },
     {
+      "name": "update_actor",
+      "discriminator": [
+        63,
+        85,
+        119,
+        180,
+        13,
+        73,
+        133,
+        57
+      ],
+      "accounts": [
+        {
+          "name": "actor",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "actor_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "actor_type",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "province",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "city",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "balance",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "assigned_tps",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
+    },
+    {
       "name": "update_transaction",
       "discriminator": [
         251,

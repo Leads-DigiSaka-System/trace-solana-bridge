@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response } from 'express';
 import dotenv from 'dotenv';
-import { checkProgramInitialization, submitActorToSolana } from './solanaService.js'; 
+import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, updateActorOnSolana } from './solanaService.js'; 
 
 dotenv.config();
 
@@ -48,6 +48,61 @@ app.post('/api/v1/submit-actor', async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('Solana Submission Error:', error.message);
         // 500 status if the submission fails (e.g., network error, invalid instruction)
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 3. CHECK ACTOR EXISTS ROUTE (Called synchronously by Laravel PUT)
+app.get('/api/v1/check-actor/:actorId', async (req: Request, res: Response) => {
+    try {
+        const actorIdParam = req.params.actorId;
+        
+        if (!actorIdParam) {
+            return res.status(400).json({ success: false, error: 'Actor ID parameter is required' });
+        }
+        
+        const actorId = parseInt(actorIdParam, 10);
+        
+        if (isNaN(actorId)) {
+            return res.status(400).json({ success: false, error: 'Invalid actor ID' });
+        }
+        
+        const exists = await checkActorExistsOnSolana(actorId);
+        
+        res.json({ 
+            exists,
+            actor_id: actorId
+        });
+    } catch (error: any) {
+        console.error('Error checking actor existence:', {
+            message: error.message,
+            stack: error.stack,
+            actorId: req.params.actorId
+        });
+        res.status(500).json({ 
+            success: false, 
+            error: error.message || 'Internal server error',
+            actor_id: req.params.actorId ? parseInt(req.params.actorId, 10) : null
+        });
+    }
+});
+
+// 4. UPDATE ACTOR ROUTE (Called asynchronously by Laravel Queue Worker)
+app.post('/api/v1/update-actor', async (req: Request, res: Response) => {
+    try {
+        const actorData = req.body; 
+        
+        // Call the service function to update the actor
+        const txId = await updateActorOnSolana(actorData); 
+        
+        // Return the Transaction ID for Laravel to log
+        res.status(202).json({ 
+            message: 'Actor update accepted and submitted to Solana.', 
+            transactionId: txId 
+        });
+    } catch (error: any) {
+        console.error('Solana Update Error:', error.message);
+        // 500 status if the update fails (e.g., network error, invalid instruction, actor doesn't exist)
         res.status(500).json({ success: false, error: error.message });
     }
 });
