@@ -53,9 +53,24 @@ anchor.setProvider(provider);
 const idlContent: Idl = idlJson as Idl;
 idlContent.address = PROGRAM_ID.toBase58();
 
-// Initialize program with new Anchor 0.30+ constructor (idl, provider)
-// The program ID is read from idl.address
-const program = new anchor.Program(idlContent, provider);
+// Try to fetch IDL from on-chain first, fallback to local IDL
+let program: anchor.Program;
+try {
+    console.log("Attempting to fetch IDL from on-chain program...");
+    const onChainIdl = await anchor.Program.fetchIdl(PROGRAM_ID, provider);
+    if (onChainIdl) {
+        console.log("Using on-chain IDL");
+        program = new anchor.Program(onChainIdl, provider);
+    } else {
+        console.log("On-chain IDL not found, using local IDL");
+        program = new anchor.Program(idlContent, provider);
+    }
+} catch (error) {
+    console.warn("Failed to fetch on-chain IDL, using local IDL:", error);
+    // Initialize program with new Anchor 0.30+ constructor (idl, provider)
+    // The program ID is read from idl.address
+    program = new anchor.Program(idlContent, provider);
+}
 
 // Quick method check
 if (!program.methods) {
@@ -91,7 +106,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
         actor_id,
         user_id,
         name,
-        actor_type,
+        roles,              // JSON string or array of roles
+        organization,        // Optional organization (BLO, Buyback, COOP)
         is_active,
         province,
         city,
@@ -103,15 +119,25 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
         assigned_tps,
     } = actorData;
 
-    // Map actor_type string to u8 (0=farmer, 1=miller, 2=trader, 3=retailer, 4=consumer)
-    const actorTypeMap: { [key: string]: number } = {
-        'farmer': 0,
-        'miller': 1,
-        'trader': 2,
-        'retailer': 3,
-        'consumer': 4,
-    };
-    const actorTypeU8 = actorTypeMap[actor_type] ?? 0;
+    // Parse roles - if it's a JSON string, parse it; if it's already an array, use it
+    let rolesString: string;
+    if (typeof roles === 'string') {
+        try {
+            // Try to parse as JSON first
+            const parsed = JSON.parse(roles);
+            rolesString = Array.isArray(parsed) ? parsed.join(',') : roles;
+        } catch {
+            // If not JSON, assume it's already comma-separated
+            rolesString = roles;
+        }
+    } else if (Array.isArray(roles)) {
+        rolesString = roles.join(',');
+    } else {
+        rolesString = '';
+    }
+
+    // actor_type kept as 0 for backward compatibility (roles is the new way)
+    const actorTypeU8 = 0;
 
     // Convert is_active boolean to u8 (0=false, 1=true)
     const isActiveU8 = is_active ? 1 : 0;
@@ -141,6 +167,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
             actor_id,
             user_id,
             name,
+            roles: rolesString,
+            organization,
             actor_type: actorTypeU8,
             is_active: isActiveU8,
             province,
@@ -159,6 +187,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
                 new BN(user_id),
                 name || "",
                 actorTypeU8,
+                rolesString || "",
+                organization || null,
                 isActiveU8,
                 province || "",
                 city || "",
@@ -239,7 +269,8 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
     const {
         actor_id,
         name,
-        actor_type,
+        roles,              // JSON string or array of roles
+        organization,        // Optional organization (BLO, Buyback, COOP)
         is_active,
         province,
         city,
@@ -248,17 +279,21 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
         assigned_tps,
     } = actorData;
 
-    // Map actor_type string to u8 if provided
-    let actorTypeU8: number | null = null;
-    if (actor_type !== undefined && actor_type !== null) {
-        const actorTypeMap: { [key: string]: number } = {
-            'farmer': 0,
-            'miller': 1,
-            'trader': 2,
-            'retailer': 3,
-            'consumer': 4,
-        };
-        actorTypeU8 = actorTypeMap[actor_type] ?? null;
+    // Parse roles - if it's a JSON string, parse it; if it's already an array, use it
+    let rolesString: string | null = null;
+    if (roles !== undefined && roles !== null) {
+        if (typeof roles === 'string') {
+            try {
+                // Try to parse as JSON first
+                const parsed = JSON.parse(roles);
+                rolesString = Array.isArray(parsed) ? parsed.join(',') : roles;
+            } catch {
+                // If not JSON, assume it's already comma-separated
+                rolesString = roles;
+            }
+        } else if (Array.isArray(roles)) {
+            rolesString = roles.join(',');
+        }
     }
 
     // Convert is_active boolean to u8 if provided
@@ -290,6 +325,10 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
             throw new Error("updateActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
         }
 
+        // Log the method signature for debugging
+        console.log("updateActor method found. Program ID:", PROGRAM_ID.toBase58());
+        console.log("Program IDL address:", program.idl.address);
+
         // First verify actor exists - CRITICAL: Do not create, only update existing actors
         const accountInfo = await connection.getAccountInfo(actorPDA);
         if (accountInfo === null) {
@@ -303,32 +342,37 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
             throw new Error(`Actor ${actor_id} account exists but is not owned by the correct program.`);
         }
 
-        console.log("Calling updateActor with data:", {
-            actor_id,
-            name: name !== undefined ? name : null,
-            actor_type: actorTypeU8,
-            is_active: isActiveU8,
-            province: province !== undefined ? province : null,
-            city: city !== undefined ? city : null,
-            balance: balanceInSmallestUnit ? balanceInSmallestUnit.toString() : null,
-            address: address !== undefined ? address : null,
-            assigned_tps: assigned_tps !== undefined ? assigned_tps : null,
+        // Prepare parameters with explicit null handling for Option types
+        const params = [
+            new BN(actor_id), // _actor_id: u64 (required)
+            name !== undefined ? name : null, // name: Option<String>
+            rolesString !== null ? rolesString : null, // roles: Option<String>
+            organization !== undefined && organization !== null ? organization : null, // organization: Option<String>
+            isActiveU8 !== null ? isActiveU8 : null, // is_active: Option<u8>
+            province !== undefined ? province : null, // province: Option<String>
+            city !== undefined ? city : null, // city: Option<String>
+            balanceInSmallestUnit !== null ? balanceInSmallestUnit : null, // balance: Option<u64>
+            address !== undefined ? address : null, // address: Option<String>
+            assigned_tps !== undefined ? new BN(assigned_tps) : null, // assigned_tps: Option<u64>
+        ];
+
+        console.log("Calling updateActor with parameters:", {
+            actor_id: params[0].toString(),
+            name: params[1],
+            roles: params[2],
+            organization: params[3],
+            is_active: params[4],
+            province: params[5],
+            city: params[6],
+            balance: params[7] ? (params[7] instanceof BN ? params[7].toString() : params[7]) : null,
+            address: params[8],
+            assigned_tps: params[9] ? (params[9] instanceof BN ? params[9].toString() : params[9]) : null,
         });
 
         // Build the method call with optional parameters
         // Anchor's Option<T> in Rust maps to null in TypeScript
         // actor_id must be the first parameter for Anchor to derive the PDA correctly
-        const methodBuilder = program.methods.updateActor(
-            new BN(actor_id),
-            name !== undefined ? name : null,
-            actorTypeU8 !== null ? actorTypeU8 : null,
-            isActiveU8 !== null ? isActiveU8 : null,
-            province !== undefined ? province : null,
-            city !== undefined ? city : null,
-            balanceInSmallestUnit,
-            address !== undefined ? address : null,
-            assigned_tps !== undefined ? new BN(assigned_tps) : null,
-        );
+        const methodBuilder = program.methods.updateActor(...params);
 
         const txSig = await methodBuilder
             .accounts({
@@ -349,5 +393,70 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
             cause: err.cause
         });
         throw new Error(`Failed to execute Anchor update instruction: ${err.message || err.toString()}`);
+    }
+};
+
+export const deleteActorOnSolana = async (actorData: any): Promise<string> => {
+    const { actor_id } = actorData;
+
+    if (!actor_id) {
+        throw new Error("actor_id is required for deletion");
+    }
+
+    // PDA for actor account (seeds: "actor", authority, actor_id)
+    const [actorPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("actor"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(new BN(actor_id).toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        // Verify the method exists
+        if (!program.methods.deleteActor) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("deleteActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("deleteActor method found. Program ID:", PROGRAM_ID.toBase58());
+
+        // Verify actor exists before deletion
+        const accountInfo = await connection.getAccountInfo(actorPDA);
+        if (accountInfo === null) {
+            console.error(`Actor ${actor_id} does not exist on Solana (PDA: ${actorPDA.toBase58()}). Cannot delete non-existent actor.`);
+            throw new Error(`Actor ${actor_id} does not exist on Solana. Cannot delete non-existent actor.`);
+        }
+        
+        // Verify it's owned by our program
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            console.error(`Actor ${actor_id} account exists but is not owned by our program`);
+            throw new Error(`Actor ${actor_id} account exists but is not owned by the correct program.`);
+        }
+
+        console.log("Calling deleteActor with actor_id:", actor_id);
+
+        // Call delete_actor instruction (only requires actor_id for PDA derivation)
+        const txSig = await program.methods
+            .deleteActor(new BN(actor_id))
+            .accounts({
+                actor: actorPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Actor Deleted (Deactivated) on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program Delete Call Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor delete instruction: ${err.message || err.toString()}`);
     }
 };

@@ -1,6 +1,6 @@
 import express, {} from 'express';
 import dotenv from 'dotenv';
-import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, updateActorOnSolana } from './solanaService.js';
+import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, updateActorOnSolana, deleteActorOnSolana } from './solanaService.js';
 dotenv.config();
 const app = express();
 app.use(express.json());
@@ -89,6 +89,23 @@ app.post('/api/v1/update-actor', async (req, res) => {
     catch (error) {
         console.error('Solana Update Error:', error.message);
         // 500 status if the update fails (e.g., network error, invalid instruction, actor doesn't exist)
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/v1/delete-actor', async (req, res) => {
+    try {
+        const actorData = req.body;
+        // Call the service function to delete (deactivate) the actor
+        const txId = await deleteActorOnSolana(actorData);
+        // Return the Transaction ID for Laravel to log
+        res.status(202).json({
+            message: 'Actor deletion accepted and submitted to Solana.',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Delete Error:', error.message);
+        // 500 status if the deletion fails (e.g., network error, invalid instruction, actor doesn't exist)
         res.status(500).json({ success: false, error: error.message });
     }
 });

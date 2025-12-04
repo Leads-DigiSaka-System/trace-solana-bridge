@@ -12,4 +12,5 @@ export declare const checkActorExistsOnSolana: (actorId: number) => Promise<bool
  * @returns Transaction signature
  */
 export declare const updateActorOnSolana: (actorData: any) => Promise<string>;
+export declare const deleteActorOnSolana: (actorData: any) => Promise<string>;
 //# sourceMappingURL=solanaService.d.ts.map
