@@ -460,3 +460,217 @@ export const deleteActorOnSolana = async (actorData: any): Promise<string> => {
         throw new Error(`Failed to execute Anchor delete instruction: ${err.message || err.toString()}`);
     }
 };
+
+// ============================================
+// ADMIN INITIALIZATION FUNCTIONS
+// ============================================
+
+/**
+ * Initialize the program (one-time setup)
+ * Creates the ProgramConfig account with the fee payer as super_admin
+ * @returns Transaction signature
+ */
+export const initializeProgramOnSolana = async (): Promise<string> => {
+    // PDA for config account (seeds: "config")
+    const [configPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("config")],
+        PROGRAM_ID
+    );
+
+    try {
+        // Check if already initialized
+        const existingConfig = await connection.getAccountInfo(configPDA);
+        if (existingConfig !== null) {
+            throw new Error("Program is already initialized. Config account exists at: " + configPDA.toBase58());
+        }
+
+        // Verify the method exists
+        if (!program.methods.initializeProgram) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("initializeProgram method not found in program. IDL may need to be updated. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("========================================");
+        console.log("INITIALIZING PROGRAM");
+        console.log("Config PDA:", configPDA.toBase58());
+        console.log("Authority (Super Admin):", feePayer.publicKey.toBase58());
+        console.log("Program ID:", PROGRAM_ID.toBase58());
+        console.log("========================================");
+
+        const txSig = await program.methods
+            .initializeProgram()
+            .accounts({
+                config: configPDA,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("========================================");
+        console.log("PROGRAM INITIALIZED SUCCESSFULLY");
+        console.log("Transaction Signature:", txSig);
+        console.log("========================================");
+
+        return txSig;
+    } catch (err: any) {
+        console.error("Program initialization failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to initialize program: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Get program configuration and initialization status
+ * @returns Object containing isInitialized, superAdmin, and initializedAt
+ */
+export const getProgramConfig = async (): Promise<{
+    isInitialized: boolean;
+    superAdmin: string | null;
+    initializedAt: number | null;
+    configPda: string;
+}> => {
+    const [configPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("config")],
+        PROGRAM_ID
+    );
+
+    try {
+        const accountInfo = await connection.getAccountInfo(configPDA);
+        
+        if (accountInfo === null) {
+            console.log("Program config account does not exist (not initialized)");
+            return {
+                isInitialized: false,
+                superAdmin: null,
+                initializedAt: null,
+                configPda: configPDA.toBase58(),
+            };
+        }
+
+        // Verify it's owned by our program
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            console.warn("Config account exists but is not owned by our program");
+            return {
+                isInitialized: false,
+                superAdmin: null,
+                initializedAt: null,
+                configPda: configPDA.toBase58(),
+            };
+        }
+
+        // Fetch and decode the account data using Anchor
+        // Use type assertion since IDL types are loaded dynamically
+        try {
+            const configAccount = await (program.account as any).programConfig.fetch(configPDA);
+            
+            console.log("Program config fetched successfully:", {
+                isInitialized: configAccount.isInitialized,
+                superAdmin: configAccount.superAdmin.toBase58(),
+                initializedAt: configAccount.initializedAt.toNumber(),
+            });
+
+            return {
+                isInitialized: configAccount.isInitialized,
+                superAdmin: configAccount.superAdmin.toBase58(),
+                initializedAt: configAccount.initializedAt.toNumber(),
+                configPda: configPDA.toBase58(),
+            };
+        } catch (decodeErr: any) {
+            console.error("Failed to decode config account:", decodeErr);
+            // Account exists but couldn't be decoded - might be corrupted or wrong structure
+            return {
+                isInitialized: false,
+                superAdmin: null,
+                initializedAt: null,
+                configPda: configPDA.toBase58(),
+            };
+        }
+    } catch (err: any) {
+        console.error("Error fetching program config:", err);
+        throw new Error(`Failed to fetch program config: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Get the fee payer's public key (useful for admin verification)
+ * @returns The fee payer's public key as a base58 string
+ */
+export const getFeePayerPublicKey = (): string => {
+    return feePayer.publicKey.toBase58();
+};
+
+/**
+ * Close the program config (un-initialize the program)
+ * Only the super_admin can do this
+ * WARNING: For testing purposes only
+ * @returns Transaction signature
+ */
+export const closeConfigOnSolana = async (): Promise<string> => {
+    // PDA for config account (seeds: "config")
+    const [configPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("config")],
+        PROGRAM_ID
+    );
+
+    try {
+        // Check if config exists
+        const existingConfig = await connection.getAccountInfo(configPDA);
+        if (existingConfig === null) {
+            throw new Error("Program config does not exist. Program is not initialized.");
+        }
+
+        // Verify caller is super_admin by fetching config
+        const config = await getProgramConfig();
+        if (!config.isInitialized) {
+            throw new Error("Program is not initialized.");
+        }
+        
+        if (config.superAdmin !== feePayer.publicKey.toBase58()) {
+            throw new Error(`Unauthorized: Only the super_admin (${config.superAdmin}) can close the config. Current authority: ${feePayer.publicKey.toBase58()}`);
+        }
+
+        // Verify the method exists
+        if (!program.methods.closeConfig) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("closeConfig method not found in program. IDL may need to be updated.");
+        }
+
+        console.log("========================================");
+        console.log("CLOSING PROGRAM CONFIG (UN-INITIALIZING)");
+        console.log("Config PDA:", configPDA.toBase58());
+        console.log("Authority:", feePayer.publicKey.toBase58());
+        console.log("========================================");
+
+        const txSig = await program.methods
+            .closeConfig()
+            .accounts({
+                config: configPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("========================================");
+        console.log("PROGRAM CONFIG CLOSED SUCCESSFULLY");
+        console.log("Transaction Signature:", txSig);
+        console.log("Program is now UN-INITIALIZED");
+        console.log("========================================");
+
+        return txSig;
+    } catch (err: any) {
+        console.error("Close config failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to close config: ${err.message || err.toString()}`);
+    }
+};

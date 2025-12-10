@@ -89,6 +89,52 @@
       ]
     },
     {
+      "name": "close_config",
+      "docs": [
+        "Close the program config (un-initialize)",
+        "Only the super_admin can do this",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: For testing purposes only - remove before mainnet deployment"
+      ],
+      "discriminator": [
+        145,
+        9,
+        72,
+        157,
+        95,
+        125,
+        61,
+        85
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "create_actor",
       "discriminator": [
         46,
@@ -344,6 +390,55 @@
       ]
     },
     {
+      "name": "initialize_program",
+      "docs": [
+        "Initialize the program (one-time setup)",
+        "Creates a ProgramConfig account that stores the super_admin",
+        "Can only be called once - subsequent calls will fail"
+      ],
+      "discriminator": [
+        176,
+        107,
+        205,
+        168,
+        24,
+        157,
+        175,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "update_actor",
       "discriminator": [
         63,
@@ -508,6 +603,19 @@
       ]
     },
     {
+      "name": "ProgramConfig",
+      "discriminator": [
+        196,
+        210,
+        90,
+        231,
+        144,
+        149,
+        140,
+        63
+      ]
+    },
+    {
       "name": "TransactionAccount",
       "discriminator": [
         146,
@@ -531,6 +639,21 @@
       "code": 6001,
       "name": "BumpNotFound",
       "msg": "Bump not found in context"
+    },
+    {
+      "code": 6002,
+      "name": "AlreadyInitialized",
+      "msg": "Program has already been initialized"
+    },
+    {
+      "code": 6003,
+      "name": "NotInitialized",
+      "msg": "Program has not been initialized yet"
+    },
+    {
+      "code": 6004,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: Only super admin can perform this action"
     }
   ],
   "types": [
@@ -673,6 +796,34 @@
           },
           {
             "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProgramConfig",
+      "docs": [
+        "Program configuration account - stores initialization state and super admin",
+        "PDA seeds: [\"config\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "super_admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "initialized_at",
             "type": "i64"
           },
           {
