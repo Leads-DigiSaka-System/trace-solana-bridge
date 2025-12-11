@@ -1,10 +1,38 @@
 import express, {} from 'express';
 import dotenv from 'dotenv';
-import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, updateActorOnSolana, deleteActorOnSolana, initializeProgramOnSolana, getProgramConfig, getFeePayerPublicKey, closeConfigOnSolana } from './solanaService.js';
+import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, getActorFromSolana, updateActorOnSolana, deleteActorOnSolana, closeActorOnSolana, initializeProgramOnSolana, getProgramConfig, getFeePayerPublicKey, closeConfigOnSolana } from './solanaService.js';
 import { verifyHmac, logRequest } from './middleware/hmacAuth.js';
 dotenv.config();
 const app = express();
-app.use(express.json());
+// Capture raw body for HMAC verification before parsing JSON
+// This middleware must run BEFORE express.json() to capture the raw request body
+app.use((req, res, next) => {
+    // Only capture body for POST/PUT/PATCH requests
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+        let rawBody = '';
+        req.on('data', (chunk) => {
+            rawBody += chunk.toString('utf8');
+        });
+        req.on('end', () => {
+            // Store raw body for HMAC middleware to use
+            req.rawBody = rawBody;
+            // Manually parse JSON and attach to req.body so routes can use it
+            try {
+                req.body = rawBody ? JSON.parse(rawBody) : {};
+            }
+            catch (e) {
+                req.body = {};
+            }
+            next();
+        });
+    }
+    else {
+        // For GET requests, no body to capture
+        next();
+    }
+});
+// Note: We're NOT using express.json() here because we manually parse in the middleware above
+// This ensures we have access to the raw body for HMAC verification
 const PORT = process.env.NODE_SERVICE_PORT || 3000;
 // Log HMAC auth status on startup
 console.log('========================================');
@@ -65,18 +93,59 @@ app.get('/api/v1/check-actor/:actorId', verifyHmac, async (req, res) => {
         if (!actorIdParam) {
             return res.status(400).json({ success: false, error: 'Actor ID parameter is required' });
         }
-        const actorId = parseInt(actorIdParam, 10);
-        if (isNaN(actorId)) {
-            return res.status(400).json({ success: false, error: 'Invalid actor ID' });
+        // CRITICAL: Don't use parseInt() for large numbers - it loses precision
+        // Pass the string directly to checkActorExistsOnSolana - BN handles strings correctly
+        // Validate it's a numeric string
+        if (!/^\d+$/.test(actorIdParam)) {
+            return res.status(400).json({ success: false, error: 'Invalid actor ID format. Must be a numeric string.' });
         }
-        const exists = await checkActorExistsOnSolana(actorId);
+        // Pass as string to preserve precision for large u64 values
+        const exists = await checkActorExistsOnSolana(actorIdParam);
         res.json({
             exists,
-            actor_id: actorId
+            actor_id: actorIdParam // Return as string to preserve precision
         });
     }
     catch (error) {
         console.error('Error checking actor existence:', {
+            message: error.message,
+            stack: error.stack,
+            actorId: req.params.actorId
+        });
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error',
+            actor_id: req.params.actorId ? parseInt(req.params.actorId, 10) : null
+        });
+    }
+});
+// 7. GET ACTOR DETAILS ROUTE
+app.get('/api/v1/get-actor/:actorId', verifyHmac, async (req, res) => {
+    try {
+        const actorIdParam = req.params.actorId;
+        if (!actorIdParam) {
+            return res.status(400).json({ success: false, error: 'Actor ID parameter is required' });
+        }
+        const actorId = parseInt(actorIdParam, 10);
+        if (isNaN(actorId)) {
+            return res.status(400).json({ success: false, error: 'Invalid actor ID' });
+        }
+        const actor = await getActorFromSolana(actorId);
+        if (!actor) {
+            return res.status(404).json({
+                success: false,
+                error: 'Actor not found on Solana',
+                actor_id: actorId
+            });
+        }
+        res.json({
+            success: true,
+            actor,
+            actor_id: actorId
+        });
+    }
+    catch (error) {
+        console.error('Error fetching actor:', {
             message: error.message,
             stack: error.stack,
             actorId: req.params.actorId
@@ -121,6 +190,25 @@ app.post('/api/v1/delete-actor', verifyHmac, async (req, res) => {
     catch (error) {
         console.error('Solana Delete Error:', error.message);
         // 500 status if the deletion fails (e.g., network error, invalid instruction, actor doesn't exist)
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// 6. CLOSE ACTOR ROUTE (permanently remove account, return rent)
+app.post('/api/v1/close-actor', verifyHmac, async (req, res) => {
+    try {
+        const actorData = req.body;
+        // Call the service function to close (permanently delete) the actor account
+        const txId = await closeActorOnSolana(actorData);
+        // Return the Transaction ID for Laravel to log
+        res.status(200).json({
+            message: 'Actor account closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain.'
+        });
+    }
+    catch (error) {
+        console.error('Solana Close Actor Error:', error.message);
+        // 500 status if the close fails (e.g., network error, invalid instruction, actor doesn't exist)
         res.status(500).json({ success: false, error: error.message });
     }
 });

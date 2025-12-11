@@ -24,6 +24,53 @@ if (!process.env.SOLANA_FEE_PAYER_SECRET_KEY) {
 
 const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID);
 
+/**
+ * Validate and convert actor_id to BN
+ * 
+ * This helper function centralizes actor_id validation and conversion logic
+ * to prevent code duplication and ensure consistency across all Solana operations.
+ * 
+ * @param actor_id The actor ID (can be number, string, or undefined/null)
+ * @param operationName Optional name of the operation for error messages (e.g., "creation", "update", "deletion")
+ * @returns BN instance representing the validated actor_id
+ * @throws Error if actor_id is invalid, missing, out of range, or zero
+ */
+function validateAndConvertActorId(actor_id: any, operationName: string = "operation"): BN {
+    if (actor_id === undefined || actor_id === null) {
+        throw new Error(`actor_id is required for ${operationName}`);
+    }
+
+    // Convert actor_id to string first to prevent precision loss, then to BN
+    // Large numbers (> Number.MAX_SAFE_INTEGER) lose precision if passed as number
+    const actorIdString = String(actor_id);
+    
+    // Validate it's a valid numeric string
+    if (!/^\d+$/.test(actorIdString)) {
+        throw new Error(`Invalid actor_id format: ${actor_id}. Must be a valid u64 (numeric string)`);
+    }
+    
+    // Convert to BN (always use string to prevent precision loss)
+    let actorIdBN: BN;
+    try {
+        actorIdBN = new BN(actorIdString, 10);
+    } catch (err) {
+        throw new Error(`Invalid actor_id format: ${actor_id}. Must be a valid u64 (number or numeric string)`);
+    }
+
+    // Validate actor_id is within u64 range (0 to 2^64-1)
+    const MAX_U64 = new BN('18446744073709551615'); // 2^64 - 1
+    if (actorIdBN.lt(new BN(0)) || actorIdBN.gt(MAX_U64)) {
+        throw new Error(`actor_id out of range: ${actor_id}. Must be between 0 and 18446744073709551615`);
+    }
+
+    // Validate actor_id is not 0 (reserved/invalid)
+    if (actorIdBN.eq(new BN(0))) {
+        throw new Error(`actor_id cannot be 0. Invalid actor ID.`);
+    }
+
+    return actorIdBN;
+}
+
 // Connection
 const connection = new Connection(
     process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
@@ -119,7 +166,14 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
         assigned_tps,
     } = actorData;
 
-    // Parse roles - if it's a JSON string, parse it; if it's already an array, use it
+    // ============================================
+    // VALIDATE AND CONVERT actor_id
+    // ============================================
+    const actorIdBN = validateAndConvertActorId(actor_id, "creation");
+
+    // ============================================
+    // PARSE ROLES
+    // ============================================
     let rolesString: string;
     if (typeof roles === 'string') {
         try {
@@ -144,18 +198,52 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
 
     // Convert balance to smallest unit (assuming balance is in main currency unit, convert to cents/smallest unit)
     // Adjust conversion based on Digisaka currency's smallest unit
-    const balanceInSmallestUnit = Math.floor((balance || 0) * 100); // Assuming 2 decimal places
+    // Use string conversion to prevent precision loss with large numbers
+    const balanceStr = String(balance || 0);
+    const balanceNum = parseFloat(balanceStr);
+    const balanceInSmallestUnit = Math.floor(balanceNum * 100); // Assuming 2 decimal places
 
-    // PDA for actor account (seeds: "actor", authority, actor_id)
-    const [actorPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("actor"),
+    // ============================================
+    // DERIVE PDA AND VERIFY
+    // ============================================
+    let actorPDA: PublicKey;
+    let bump: number;
+    
+    try {
+        [actorPDA, bump] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("actor"),
             feePayer.publicKey.toBuffer(),
-            Buffer.from(new BN(actor_id).toArray("le", 8)),
+                Buffer.from(actorIdBN.toArray("le", 8)),
         ],
         PROGRAM_ID
     );
 
+        console.log("PDA Derivation:", {
+            actor_id: actorIdBN.toString(),
+            pda: actorPDA.toBase58(),
+            bump: bump,
+        });
+        
+        // Check if account already exists (pre-flight check)
+        const accountInfo = await connection.getAccountInfo(actorPDA);
+        if (accountInfo !== null) {
+            throw new Error(
+                `Actor account already exists on Solana. ` +
+                `Actor ID: ${actorIdBN.toString()}, PDA: ${actorPDA.toBase58()}. ` +
+                `This indicates an actor ID collision or duplicate creation attempt.`
+            );
+        }
+    } catch (pdaErr: any) {
+        if (pdaErr.message?.includes('already exists')) {
+            throw pdaErr; // Re-throw account exists errors
+        }
+        throw new Error(`Failed to derive PDA for actor_id ${actorIdBN.toString()}: ${pdaErr.message}`);
+    }
+
+    // ============================================
+    // EXECUTE ANCHOR INSTRUCTION
+    // ============================================
     try {
         // Verify the method exists
         if (!program.methods.createActor) {
@@ -164,7 +252,7 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
         }
 
         console.log("Calling createActor with data:", {
-            actor_id,
+            actor_id: actorIdBN.toString(),
             user_id,
             name,
             roles: rolesString,
@@ -183,8 +271,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
 
         const txSig = await program.methods
             .createActor(
-                new BN(actor_id),
-                new BN(user_id),
+                actorIdBN, // Use validated BN
+                new BN(String(user_id), 10), // Convert to string first to prevent precision loss
                 name || "",
                 actorTypeU8,
                 rolesString || "",
@@ -192,12 +280,12 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
                 isActiveU8,
                 province || "",
                 city || "",
-                new BN(balanceInSmallestUnit),
+                new BN(String(balanceInSmallestUnit), 10), // Convert to string first
                 pin || "000000",
                 address || "",
                 farm_id || "",
-                new BN(farmer_id),
-                new BN(assigned_tps)
+                new BN(String(farmer_id), 10), // Convert to string first
+                new BN(String(assigned_tps), 10) // Convert to string first
             )
             .accounts({
                 actor: actorPDA,
@@ -217,23 +305,54 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
             name: err.name,
             cause: err.cause
         });
+        
+        // Check for specific Anchor errors
+        if (err.message?.includes('assertion') || err.message?.includes('Assertion')) {
+            console.error("PDA Derivation Debug:", {
+                actor_id: actor_id,
+                actor_id_type: typeof actor_id,
+                actor_id_bn: actorIdBN.toString(),
+                calculated_pda: actorPDA.toBase58(),
+                authority: feePayer.publicKey.toBase58(),
+            });
+            
+            throw new Error(
+                `Solana assertion failed: PDA derivation mismatch. ` +
+                `This usually means actor_id is invalid or account already exists. ` +
+                `Actor ID: ${actorIdBN.toString()}, PDA: ${actorPDA.toBase58()}. ` +
+                `Original error: ${err.message}`
+            );
+        }
+        
         throw new Error(`Failed to execute Anchor instruction: ${err.message || err.toString()}`);
     }
 };
 
 /**
  * Check if an actor account exists on Solana
- * @param actorId The actor ID to check
+ * @param actorId The actor ID to check (number or string - BN handles both)
  * @returns true if actor exists, false otherwise
  */
-export const checkActorExistsOnSolana = async (actorId: number): Promise<boolean> => {
+export const checkActorExistsOnSolana = async (actorId: number | string): Promise<boolean> => {
     try {
+        // Convert actorId to BN - always convert to string first to prevent precision loss
+        // Large numbers (> Number.MAX_SAFE_INTEGER) lose precision if passed as number
+        const actorIdString = String(actorId);
+        
+        // Validate it's a valid numeric string
+        if (!/^\d+$/.test(actorIdString)) {
+            throw new Error(`Invalid actor_id format: ${actorId}. Must be a valid u64 (numeric string)`);
+        }
+        
+        // Create BN from string to preserve precision
+        const actorIdBN = new BN(actorIdString, 10);
+        
         // PDA for actor account (seeds: "actor", authority, actor_id)
         const [actorPDA] = PublicKey.findProgramAddressSync(
             [
                 Buffer.from("actor"),
                 feePayer.publicKey.toBuffer(),
-                Buffer.from(new BN(actorId).toArray("le", 8)),
+                Buffer.from(actorIdBN.toArray("le", 8)),
             ],
             PROGRAM_ID
         );
@@ -242,21 +361,79 @@ export const checkActorExistsOnSolana = async (actorId: number): Promise<boolean
         const accountInfo = await connection.getAccountInfo(actorPDA);
         
         if (accountInfo === null) {
-            console.log(`Actor ${actorId} does not exist on Solana (PDA: ${actorPDA.toBase58()})`);
+            console.log(`Actor ${actorIdBN.toString()} does not exist on Solana (PDA: ${actorPDA.toBase58()})`);
             return false;
         }
 
         // Verify it's owned by our program
         if (!accountInfo.owner.equals(PROGRAM_ID)) {
-            console.warn(`Actor ${actorId} account exists but is not owned by our program`);
+            console.warn(`Actor ${actorIdBN.toString()} account exists but is not owned by our program`);
             return false;
         }
 
-        console.log(`Actor ${actorId} exists on Solana (PDA: ${actorPDA.toBase58()})`);
+        console.log(`Actor ${actorIdBN.toString()} exists on Solana (PDA: ${actorPDA.toBase58()})`);
         return true;
     } catch (err: any) {
         console.error("Error checking actor existence on Solana:", err);
         throw new Error(`Failed to check actor existence: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Get actor account details from Solana
+ * @param actorId The actor ID to fetch (number or string - BN handles both)
+ * @returns Actor account data or null if not found
+ */
+export const getActorFromSolana = async (actorId: number | string): Promise<any | null> => {
+    try {
+        // Convert actorId to BN (handles both string and number)
+        const actorIdBN = new BN(actorId);
+        
+        // PDA for actor account (seeds: "actor", authority, actor_id)
+        const [actorPDA] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("actor"),
+                feePayer.publicKey.toBuffer(),
+                Buffer.from(actorIdBN.toArray("le", 8)),
+            ],
+            PROGRAM_ID
+        );
+
+        // Try to fetch the actor account
+        // Anchor converts PascalCase struct names to camelCase: ActorAccount -> actorAccount
+        // Field names are also converted: actor_id -> actorId, name_len -> nameLen
+        try {
+            const actorAccount = await (program.account as any).actorAccount.fetch(actorPDA);
+            
+            return {
+                actor_id: actorAccount.actorId.toString(), // Use toString() to prevent precision loss
+                user_id: actorAccount.userId.toString(), // Use toString() to prevent precision loss
+                name: Buffer.from(actorAccount.name.slice(0, actorAccount.nameLen)).toString('utf8'),
+                actor_type: actorAccount.actorType,
+                roles: Buffer.from(actorAccount.roles.slice(0, actorAccount.rolesLen)).toString('utf8'),
+                organization: actorAccount.organizationLen > 0 
+                    ? Buffer.from(actorAccount.organization.slice(0, actorAccount.organizationLen)).toString('utf8')
+                    : null,
+                is_active: actorAccount.isActive === 1,
+                province: Buffer.from(actorAccount.province.slice(0, actorAccount.provinceLen)).toString('utf8'),
+                city: Buffer.from(actorAccount.city.slice(0, actorAccount.cityLen)).toString('utf8'),
+                balance: actorAccount.balance.toString(), // Use toString() to prevent precision loss
+                pin: Buffer.from(actorAccount.pin.slice(0, actorAccount.pinLen)).toString('utf8'),
+                address: Buffer.from(actorAccount.address.slice(0, actorAccount.addressLen)).toString('utf8'),
+                farm_id: Buffer.from(actorAccount.farmId.slice(0, actorAccount.farmIdLen)).toString('utf8'),
+                farmer_id: actorAccount.farmerId.toString(), // Use toString() to prevent precision loss
+                assigned_tps: actorAccount.assignedTps.toString(), // Use toString() to prevent precision loss
+                timestamp: actorAccount.timestamp.toString(), // Use toString() to prevent precision loss
+                pda: actorPDA.toBase58(),
+            };
+        } catch (fetchErr: any) {
+            // Account doesn't exist or couldn't be decoded
+            console.log(`Actor ${actorIdBN.toString()} account fetch failed:`, fetchErr.message);
+            return null;
+        }
+    } catch (err: any) {
+        console.error("Error fetching actor from Solana:", err);
+        throw new Error(`Failed to fetch actor: ${err.message || err.toString()}`);
     }
 };
 
@@ -303,17 +480,27 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
     }
 
     // Convert balance to smallest unit if provided
+    // Use string conversion to prevent precision loss with large numbers
     let balanceInSmallestUnit: BN | null = null;
     if (balance !== undefined && balance !== null) {
-        balanceInSmallestUnit = new BN(Math.floor(balance * 100)); // Assuming 2 decimal places
+        // Convert balance to string first, then parse as decimal, multiply, and convert to BN
+        const balanceStr = String(balance);
+        const balanceNum = parseFloat(balanceStr);
+        const smallestUnit = Math.floor(balanceNum * 100); // Assuming 2 decimal places
+        balanceInSmallestUnit = new BN(String(smallestUnit), 10);
     }
+
+    // ============================================
+    // VALIDATE AND CONVERT actor_id
+    // ============================================
+    const actorIdBN = validateAndConvertActorId(actor_id, "update");
 
     // PDA for actor account (seeds: "actor", authority, actor_id)
     const [actorPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("actor"),
             feePayer.publicKey.toBuffer(),
-            Buffer.from(new BN(actor_id).toArray("le", 8)),
+            Buffer.from(actorIdBN.toArray("le", 8)),
         ],
         PROGRAM_ID
     );
@@ -344,7 +531,7 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
 
         // Prepare parameters with explicit null handling for Option types
         const params = [
-            new BN(actor_id), // _actor_id: u64 (required)
+            actorIdBN, // _actor_id: u64 (required, use validated BN)
             name !== undefined ? name : null, // name: Option<String>
             rolesString !== null ? rolesString : null, // roles: Option<String>
             organization !== undefined && organization !== null ? organization : null, // organization: Option<String>
@@ -353,7 +540,7 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
             city !== undefined ? city : null, // city: Option<String>
             balanceInSmallestUnit !== null ? balanceInSmallestUnit : null, // balance: Option<u64>
             address !== undefined ? address : null, // address: Option<String>
-            assigned_tps !== undefined ? new BN(assigned_tps) : null, // assigned_tps: Option<u64>
+            assigned_tps !== undefined ? new BN(String(assigned_tps), 10) : null, // assigned_tps: Option<u64> (convert to string first)
         ];
 
         console.log("Calling updateActor with parameters:", {
@@ -399,16 +586,17 @@ export const updateActorOnSolana = async (actorData: any): Promise<string> => {
 export const deleteActorOnSolana = async (actorData: any): Promise<string> => {
     const { actor_id } = actorData;
 
-    if (!actor_id) {
-        throw new Error("actor_id is required for deletion");
-    }
+    // ============================================
+    // VALIDATE AND CONVERT actor_id
+    // ============================================
+    const actorIdBN = validateAndConvertActorId(actor_id, "deletion");
 
     // PDA for actor account (seeds: "actor", authority, actor_id)
     const [actorPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("actor"),
             feePayer.publicKey.toBuffer(),
-            Buffer.from(new BN(actor_id).toArray("le", 8)),
+            Buffer.from(actorIdBN.toArray("le", 8)),
         ],
         PROGRAM_ID
     );
@@ -425,21 +613,21 @@ export const deleteActorOnSolana = async (actorData: any): Promise<string> => {
         // Verify actor exists before deletion
         const accountInfo = await connection.getAccountInfo(actorPDA);
         if (accountInfo === null) {
-            console.error(`Actor ${actor_id} does not exist on Solana (PDA: ${actorPDA.toBase58()}). Cannot delete non-existent actor.`);
-            throw new Error(`Actor ${actor_id} does not exist on Solana. Cannot delete non-existent actor.`);
+            console.error(`Actor ${actorIdBN.toString()} does not exist on Solana (PDA: ${actorPDA.toBase58()}). Cannot delete non-existent actor.`);
+            throw new Error(`Actor ${actorIdBN.toString()} does not exist on Solana. Cannot delete non-existent actor.`);
         }
         
         // Verify it's owned by our program
         if (!accountInfo.owner.equals(PROGRAM_ID)) {
-            console.error(`Actor ${actor_id} account exists but is not owned by our program`);
-            throw new Error(`Actor ${actor_id} account exists but is not owned by the correct program.`);
+            console.error(`Actor ${actorIdBN.toString()} account exists but is not owned by our program`);
+            throw new Error(`Actor ${actorIdBN.toString()} account exists but is not owned by the correct program.`);
         }
 
-        console.log("Calling deleteActor with actor_id:", actor_id);
+        console.log("Calling deleteActor with actor_id:", actorIdBN.toString());
 
         // Call delete_actor instruction (only requires actor_id for PDA derivation)
         const txSig = await program.methods
-            .deleteActor(new BN(actor_id))
+            .deleteActor(actorIdBN)
             .accounts({
                 actor: actorPDA,
                 authority: wallet.publicKey,
@@ -458,6 +646,79 @@ export const deleteActorOnSolana = async (actorData: any): Promise<string> => {
             cause: err.cause
         });
         throw new Error(`Failed to execute Anchor delete instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Close an actor account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account - use only for orphaned accounts
+ * @param actorData Object containing actor_id
+ * @returns Transaction signature
+ */
+export const closeActorOnSolana = async (actorData: any): Promise<string> => {
+    const { actor_id } = actorData;
+
+    // ============================================
+    // VALIDATE AND CONVERT actor_id
+    // ============================================
+    const actorIdBN = validateAndConvertActorId(actor_id, "closing account");
+
+    // PDA for actor account (seeds: "actor", authority, actor_id)
+    const [actorPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("actor"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(actorIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        // Verify the method exists
+        if (!program.methods.closeActor) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("closeActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("closeActor method found. Program ID:", PROGRAM_ID.toBase58());
+
+        // Verify actor exists before closing
+        const accountInfo = await connection.getAccountInfo(actorPDA);
+        if (accountInfo === null) {
+            console.error(`Actor ${actorIdBN.toString()} does not exist on Solana (PDA: ${actorPDA.toBase58()}). Cannot close non-existent actor.`);
+            throw new Error(`Actor ${actorIdBN.toString()} does not exist on Solana. Cannot close non-existent actor.`);
+        }
+        
+        // Verify it's owned by our program
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            console.error(`Actor ${actorIdBN.toString()} account exists but is not owned by our program`);
+            throw new Error(`Actor ${actorIdBN.toString()} account exists but is not owned by the correct program.`);
+        }
+
+        console.log("Calling closeActor with actor_id:", actorIdBN.toString());
+        console.log("WARNING: This will permanently delete the account and return rent");
+
+        // Call close_actor instruction (closes account and returns rent)
+        const txSig = await program.methods
+            .closeActor(actorIdBN)
+            .accounts({
+                actor: actorPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Actor Account Closed on Solana (rent returned):", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program Close Call Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor close instruction: ${err.message || err.toString()}`);
     }
 };
 

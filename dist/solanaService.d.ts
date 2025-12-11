@@ -2,10 +2,16 @@ export declare const checkProgramInitialization: () => Promise<boolean>;
 export declare const submitActorToSolana: (actorData: any) => Promise<string>;
 /**
  * Check if an actor account exists on Solana
- * @param actorId The actor ID to check
+ * @param actorId The actor ID to check (number or string - BN handles both)
  * @returns true if actor exists, false otherwise
  */
-export declare const checkActorExistsOnSolana: (actorId: number) => Promise<boolean>;
+export declare const checkActorExistsOnSolana: (actorId: number | string) => Promise<boolean>;
+/**
+ * Get actor account details from Solana
+ * @param actorId The actor ID to fetch (number or string - BN handles both)
+ * @returns Actor account data or null if not found
+ */
+export declare const getActorFromSolana: (actorId: number | string) => Promise<any | null>;
 /**
  * Update an existing actor on Solana
  * @param actorData Object containing actor_id and optional fields to update
@@ -13,6 +19,13 @@ export declare const checkActorExistsOnSolana: (actorId: number) => Promise<bool
  */
 export declare const updateActorOnSolana: (actorData: any) => Promise<string>;
 export declare const deleteActorOnSolana: (actorData: any) => Promise<string>;
+/**
+ * Close an actor account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account - use only for orphaned accounts
+ * @param actorData Object containing actor_id
+ * @returns Transaction signature
+ */
+export declare const closeActorOnSolana: (actorData: any) => Promise<string>;
 /**
  * Initialize the program (one-time setup)
  * Creates the ProgramConfig account with the fee payer as super_admin

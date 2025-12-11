@@ -89,6 +89,64 @@
       ]
     },
     {
+      "name": "close_actor",
+      "docs": [
+        "Close an actor account (permanently remove from blockchain)",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: This permanently deletes the account - use with caution",
+        "Only use for cleaning up orphaned accounts or testing"
+      ],
+      "discriminator": [
+        237,
+        163,
+        89,
+        61,
+        170,
+        119,
+        96,
+        252
+      ],
+      "accounts": [
+        {
+          "name": "actor",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "actor_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_actor_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "close_config",
       "docs": [
         "Close the program config (un-initialize)",

@@ -90,12 +90,35 @@ export const verifyHmac = (req: Request, res: Response, next: NextFunction) => {
 
     // Compute expected signature
     // Format: HMAC-SHA256(timestamp.JSON(body), secret)
-    const payload = JSON.stringify(req.body || {});
+    // IMPORTANT: Use raw body if available (before express.json() parsing)
+    // This ensures we verify against the exact JSON string that was sent
+    let payload: string;
+    if ((req as any).rawBody !== undefined) {
+        // Use raw body (exact JSON string sent by client)
+        payload = (req as any).rawBody || '{}';
+    } else {
+        // Fallback: stringify parsed body (may have different key order)
+        payload = JSON.stringify(req.body || {});
+    }
+    
     const dataToSign = `${timestamp}.${payload}`;
     const expectedSignature = crypto
         .createHmac('sha256', HMAC_SECRET)
         .update(dataToSign)
         .digest('hex');
+    
+    // Debug logging (only in development)
+    if (process.env.NODE_ENV !== 'production') {
+        console.log('🔍 HMAC Debug:', {
+            receivedSignature: signature.substring(0, 16) + '...',
+            expectedSignature: expectedSignature.substring(0, 16) + '...',
+            payloadLength: payload.length,
+            dataToSignLength: dataToSign.length,
+            timestamp,
+            usingRawBody: (req as any).rawBody !== undefined,
+            payloadPreview: payload.substring(0, 100) + (payload.length > 100 ? '...' : ''),
+        });
+    }
 
     // Constant-time comparison to prevent timing attacks
     let isValid = false;
