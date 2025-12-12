@@ -1,6 +1,10 @@
 import express, {} from 'express';
 import dotenv from 'dotenv';
-import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, getActorFromSolana, updateActorOnSolana, deleteActorOnSolana, closeActorOnSolana, initializeProgramOnSolana, getProgramConfig, getFeePayerPublicKey, closeConfigOnSolana } from './solanaService.js';
+import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSolana, getActorFromSolana, updateActorOnSolana, deleteActorOnSolana, closeActorOnSolana, 
+// Batch functions
+submitBatchToSolana, checkBatchExistsOnSolana, getBatchFromSolana, updateBatchOnSolana, deleteBatchOnSolana, closeBatchOnSolana, 
+// Admin functions
+initializeProgramOnSolana, getProgramConfig, getFeePayerPublicKey, closeConfigOnSolana } from './solanaService.js';
 import { verifyHmac, logRequest } from './middleware/hmacAuth.js';
 dotenv.config();
 const app = express();
@@ -216,6 +220,136 @@ app.post('/api/v1/close-actor', verifyHmac, async (req, res) => {
 app.post('/api/v1/test-connection', verifyHmac, (req, res) => {
     console.log('Request from Laravel:', req.body);
     res.status(200).json({ status: 'Connected', received: req.body });
+});
+// ============================================
+// RICE BATCH ROUTES (PROTECTED)
+// ============================================
+// Submit a new batch to Solana
+app.post('/api/v1/submit-batch', verifyHmac, async (req, res) => {
+    try {
+        const batchData = req.body;
+        const txId = await submitBatchToSolana(batchData);
+        res.status(202).json({
+            message: 'Batch accepted and submitted to Solana.',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Batch Submission Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Check if batch exists on Solana
+app.get('/api/v1/check-batch/:batchId', verifyHmac, async (req, res) => {
+    try {
+        const batchIdParam = req.params.batchId;
+        if (!batchIdParam) {
+            return res.status(400).json({ success: false, error: 'Batch ID parameter is required' });
+        }
+        if (!/^\d+$/.test(batchIdParam)) {
+            return res.status(400).json({ success: false, error: 'Invalid batch ID format. Must be a numeric string.' });
+        }
+        const exists = await checkBatchExistsOnSolana(batchIdParam);
+        res.json({
+            exists,
+            batch_id: batchIdParam
+        });
+    }
+    catch (error) {
+        console.error('Error checking batch existence:', {
+            message: error.message,
+            stack: error.stack,
+            batchId: req.params.batchId
+        });
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error',
+            batch_id: req.params.batchId
+        });
+    }
+});
+// Get batch details from Solana
+app.get('/api/v1/get-batch/:batchId', verifyHmac, async (req, res) => {
+    try {
+        const batchIdParam = req.params.batchId;
+        if (!batchIdParam) {
+            return res.status(400).json({ success: false, error: 'Batch ID parameter is required' });
+        }
+        if (!/^\d+$/.test(batchIdParam)) {
+            return res.status(400).json({ success: false, error: 'Invalid batch ID format. Must be a numeric string.' });
+        }
+        const batch = await getBatchFromSolana(batchIdParam);
+        if (!batch) {
+            return res.status(404).json({
+                success: false,
+                error: 'Batch not found on Solana',
+                batch_id: batchIdParam
+            });
+        }
+        res.json({
+            success: true,
+            batch,
+            batch_id: batchIdParam
+        });
+    }
+    catch (error) {
+        console.error('Error fetching batch:', {
+            message: error.message,
+            stack: error.stack,
+            batchId: req.params.batchId
+        });
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error',
+            batch_id: req.params.batchId
+        });
+    }
+});
+// Update batch on Solana
+app.post('/api/v1/update-batch', verifyHmac, async (req, res) => {
+    try {
+        const batchData = req.body;
+        const txId = await updateBatchOnSolana(batchData);
+        res.status(202).json({
+            message: 'Batch update accepted and submitted to Solana.',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Batch Update Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Delete (soft delete) batch on Solana
+app.post('/api/v1/delete-batch', verifyHmac, async (req, res) => {
+    try {
+        const batchData = req.body;
+        const txId = await deleteBatchOnSolana(batchData);
+        res.status(202).json({
+            message: 'Batch deletion accepted and submitted to Solana.',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Batch Delete Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Close batch account (permanently remove, return rent)
+app.post('/api/v1/close-batch', verifyHmac, async (req, res) => {
+    try {
+        const batchData = req.body;
+        const txId = await closeBatchOnSolana(batchData);
+        res.status(200).json({
+            message: 'Batch account closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain.'
+        });
+    }
+    catch (error) {
+        console.error('Solana Close Batch Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 // ============================================
 // ADMIN ROUTES

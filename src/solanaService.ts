@@ -723,6 +723,504 @@ export const closeActorOnSolana = async (actorData: any): Promise<string> => {
 };
 
 // ============================================
+// RICE BATCH FUNCTIONS
+// ============================================
+
+/**
+ * Validate and convert batch_id to BN
+ * Similar to validateAndConvertActorId but for batch operations
+ */
+function validateAndConvertBatchId(batch_id: any, operationName: string = "operation"): BN {
+    if (batch_id === undefined || batch_id === null) {
+        throw new Error(`batch_id is required for ${operationName}`);
+    }
+
+    const batchIdString = String(batch_id);
+    
+    if (!/^\d+$/.test(batchIdString)) {
+        throw new Error(`Invalid batch_id format: ${batch_id}. Must be a valid u64 (numeric string)`);
+    }
+    
+    let batchIdBN: BN;
+    try {
+        batchIdBN = new BN(batchIdString, 10);
+    } catch (err) {
+        throw new Error(`Invalid batch_id format: ${batch_id}. Must be a valid u64 (number or numeric string)`);
+    }
+
+    const MAX_U64 = new BN('18446744073709551615');
+    if (batchIdBN.lt(new BN(0)) || batchIdBN.gt(MAX_U64)) {
+        throw new Error(`batch_id out of range: ${batch_id}. Must be between 0 and 18446744073709551615`);
+    }
+
+    if (batchIdBN.eq(new BN(0))) {
+        throw new Error(`batch_id cannot be 0. Invalid batch ID.`);
+    }
+
+    return batchIdBN;
+}
+
+/**
+ * Submit a new rice batch to Solana
+ * @param batchData Object containing batch data
+ * @returns Transaction signature
+ */
+export const submitBatchToSolana = async (batchData: any): Promise<string> => {
+    const {
+        batch_id,
+        qr_code,
+        season_id,
+        current_holder_id,
+        milling_id,
+        drying_id,
+        validator,
+        batch_weight_kg,
+        moisture_content,
+        price_per_kg,
+        status,
+    } = batchData;
+
+    // Validate batch_id
+    const batchIdBN = validateAndConvertBatchId(batch_id, "creation");
+
+    // Convert status string to u8
+    const statusMap: { [key: string]: number } = {
+        'for_sale': 0,
+        'stock': 1,
+        'consumed': 2,
+    };
+    const statusU8 = statusMap[status] ?? 1; // Default to 'stock'
+
+    // Convert decimal values to integers for Solana storage
+    // Weight: kg to grams (multiply by 1000)
+    const weightInGrams = Math.floor((batch_weight_kg || 0) * 1000);
+    
+    // Moisture: percentage to basis points (multiply by 100)
+    const moistureBasisPoints = Math.floor((moisture_content || 0) * 100);
+    
+    // Price: to cents (multiply by 100)
+    const priceInCents = Math.floor((price_per_kg || 0) * 100);
+
+    // Derive PDA
+    let batchPDA: PublicKey;
+    let bump: number;
+    
+    try {
+        [batchPDA, bump] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("batch"),
+                feePayer.publicKey.toBuffer(),
+                Buffer.from(batchIdBN.toArray("le", 8)),
+            ],
+            PROGRAM_ID
+        );
+
+        console.log("Batch PDA Derivation:", {
+            batch_id: batchIdBN.toString(),
+            pda: batchPDA.toBase58(),
+            bump: bump,
+        });
+        
+        // Check if account already exists
+        const accountInfo = await connection.getAccountInfo(batchPDA);
+        if (accountInfo !== null) {
+            throw new Error(
+                `Batch account already exists on Solana. ` +
+                `Batch ID: ${batchIdBN.toString()}, PDA: ${batchPDA.toBase58()}.`
+            );
+        }
+    } catch (pdaErr: any) {
+        if (pdaErr.message?.includes('already exists')) {
+            throw pdaErr;
+        }
+        throw new Error(`Failed to derive PDA for batch_id ${batchIdBN.toString()}: ${pdaErr.message}`);
+    }
+
+    try {
+        if (!program.methods.createBatch) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("createBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("Calling createBatch with data:", {
+            batch_id: batchIdBN.toString(),
+            qr_code,
+            season_id,
+            current_holder_id,
+            milling_id,
+            drying_id,
+            validator,
+            batch_weight_kg: weightInGrams,
+            moisture_content: moistureBasisPoints,
+            price_per_kg: priceInCents,
+            status: statusU8,
+        });
+
+        const txSig = await program.methods
+            .createBatch(
+                batchIdBN,
+                qr_code || "",
+                new BN(String(season_id || 0), 10),
+                new BN(String(current_holder_id || 0), 10),
+                milling_id ? new BN(String(milling_id), 10) : null,
+                drying_id ? new BN(String(drying_id), 10) : null,
+                validator ? new BN(String(validator), 10) : null,
+                new BN(String(weightInGrams), 10),
+                new BN(String(moistureBasisPoints), 10),
+                new BN(String(priceInCents), 10),
+                statusU8
+            )
+            .accounts({
+                batch: batchPDA,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Batch Created on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program createBatch Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor createBatch instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Check if a batch account exists on Solana
+ * @param batchId The batch ID to check
+ * @returns true if batch exists, false otherwise
+ */
+export const checkBatchExistsOnSolana = async (batchId: number | string): Promise<boolean> => {
+    try {
+        const batchIdString = String(batchId);
+        
+        if (!/^\d+$/.test(batchIdString)) {
+            throw new Error(`Invalid batch_id format: ${batchId}. Must be a valid u64 (numeric string)`);
+        }
+        
+        const batchIdBN = new BN(batchIdString, 10);
+        
+        const [batchPDA] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("batch"),
+                feePayer.publicKey.toBuffer(),
+                Buffer.from(batchIdBN.toArray("le", 8)),
+            ],
+            PROGRAM_ID
+        );
+
+        const accountInfo = await connection.getAccountInfo(batchPDA);
+        
+        if (accountInfo === null) {
+            console.log(`Batch ${batchIdBN.toString()} does not exist on Solana (PDA: ${batchPDA.toBase58()})`);
+            return false;
+        }
+
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            console.warn(`Batch ${batchIdBN.toString()} account exists but is not owned by our program`);
+            return false;
+        }
+
+        console.log(`Batch ${batchIdBN.toString()} exists on Solana (PDA: ${batchPDA.toBase58()})`);
+        return true;
+    } catch (err: any) {
+        console.error("Error checking batch existence on Solana:", err);
+        throw new Error(`Failed to check batch existence: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Get batch account details from Solana
+ * @param batchId The batch ID to fetch
+ * @returns Batch account data or null if not found
+ */
+export const getBatchFromSolana = async (batchId: number | string): Promise<any | null> => {
+    try {
+        const batchIdBN = new BN(String(batchId), 10);
+        
+        const [batchPDA] = PublicKey.findProgramAddressSync(
+            [
+                Buffer.from("batch"),
+                feePayer.publicKey.toBuffer(),
+                Buffer.from(batchIdBN.toArray("le", 8)),
+            ],
+            PROGRAM_ID
+        );
+
+        try {
+            const batchAccount = await (program.account as any).batchAccount.fetch(batchPDA);
+            
+            // Convert status back to string
+            const statusMap: { [key: number]: string } = {
+                0: 'for_sale',
+                1: 'stock',
+                2: 'consumed',
+            };
+
+            return {
+                batch_id: batchAccount.batchId.toString(),
+                qr_code: Buffer.from(batchAccount.qrCode.slice(0, batchAccount.qrCodeLen)).toString('utf8'),
+                season_id: batchAccount.seasonId.toString(),
+                current_holder_id: batchAccount.currentHolderId.toString(),
+                milling_id: batchAccount.millingId.toString(),
+                drying_id: batchAccount.dryingId.toString(),
+                validator: batchAccount.validator.toString(),
+                batch_weight_kg: batchAccount.batchWeightKg.toNumber() / 1000, // Convert grams back to kg
+                moisture_content: batchAccount.moistureContent.toNumber() / 100, // Convert basis points to percentage
+                price_per_kg: batchAccount.pricePerKg.toNumber() / 100, // Convert cents to currency
+                status: statusMap[batchAccount.status] || 'stock',
+                is_active: batchAccount.isActive === 1,
+                timestamp: batchAccount.timestamp.toString(),
+                pda: batchPDA.toBase58(),
+            };
+        } catch (fetchErr: any) {
+            console.log(`Batch ${batchIdBN.toString()} account fetch failed:`, fetchErr.message);
+            return null;
+        }
+    } catch (err: any) {
+        console.error("Error fetching batch from Solana:", err);
+        throw new Error(`Failed to fetch batch: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Update an existing batch on Solana
+ * @param batchData Object containing batch_id and optional fields to update
+ * @returns Transaction signature
+ */
+export const updateBatchOnSolana = async (batchData: any): Promise<string> => {
+    const {
+        batch_id,
+        current_holder_id,
+        milling_id,
+        drying_id,
+        validator,
+        batch_weight_kg,
+        moisture_content,
+        price_per_kg,
+        status,
+    } = batchData;
+
+    const batchIdBN = validateAndConvertBatchId(batch_id, "update");
+
+    const [batchPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("batch"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(batchIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.updateBatch) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("updateBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify batch exists
+        const accountInfo = await connection.getAccountInfo(batchPDA);
+        if (accountInfo === null) {
+            throw new Error(`Batch ${batch_id} does not exist on Solana. Cannot update non-existent batch.`);
+        }
+        
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            throw new Error(`Batch ${batch_id} account exists but is not owned by the correct program.`);
+        }
+
+        // Convert status string to u8 if provided
+        let statusU8: number | null = null;
+        if (status !== undefined && status !== null) {
+            const statusMap: { [key: string]: number } = {
+                'for_sale': 0,
+                'stock': 1,
+                'consumed': 2,
+            };
+            statusU8 = statusMap[status] ?? null;
+        }
+
+        // Convert decimal values if provided
+        const weightInGrams = batch_weight_kg !== undefined ? Math.floor(batch_weight_kg * 1000) : null;
+        const moistureBasisPoints = moisture_content !== undefined ? Math.floor(moisture_content * 100) : null;
+        const priceInCents = price_per_kg !== undefined ? Math.floor(price_per_kg * 100) : null;
+
+        const params = [
+            batchIdBN,
+            current_holder_id !== undefined ? new BN(String(current_holder_id), 10) : null,
+            milling_id !== undefined ? new BN(String(milling_id), 10) : null,
+            drying_id !== undefined ? new BN(String(drying_id), 10) : null,
+            validator !== undefined ? new BN(String(validator), 10) : null,
+            weightInGrams !== null ? new BN(String(weightInGrams), 10) : null,
+            moistureBasisPoints !== null ? new BN(String(moistureBasisPoints), 10) : null,
+            priceInCents !== null ? new BN(String(priceInCents), 10) : null,
+            statusU8,
+        ];
+
+        console.log("Calling updateBatch with parameters:", {
+            batch_id: batchIdBN.toString(),
+            current_holder_id: params[1]?.toString() || null,
+            milling_id: params[2]?.toString() || null,
+            drying_id: params[3]?.toString() || null,
+            validator: params[4]?.toString() || null,
+            batch_weight_kg: params[5]?.toString() || null,
+            moisture_content: params[6]?.toString() || null,
+            price_per_kg: params[7]?.toString() || null,
+            status: params[8],
+        });
+
+        const txSig = await program.methods
+            .updateBatch(...params)
+            .accounts({
+                batch: batchPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Batch Updated on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program updateBatch Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor updateBatch instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Soft delete a batch on Solana (set is_active = 0)
+ * @param batchData Object containing batch_id
+ * @returns Transaction signature
+ */
+export const deleteBatchOnSolana = async (batchData: any): Promise<string> => {
+    const { batch_id } = batchData;
+
+    const batchIdBN = validateAndConvertBatchId(batch_id, "deletion");
+
+    const [batchPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("batch"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(batchIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.deleteBatch) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("deleteBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify batch exists
+        const accountInfo = await connection.getAccountInfo(batchPDA);
+        if (accountInfo === null) {
+            throw new Error(`Batch ${batchIdBN.toString()} does not exist on Solana. Cannot delete non-existent batch.`);
+        }
+        
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            throw new Error(`Batch ${batchIdBN.toString()} account exists but is not owned by the correct program.`);
+        }
+
+        console.log("Calling deleteBatch with batch_id:", batchIdBN.toString());
+
+        const txSig = await program.methods
+            .deleteBatch(batchIdBN)
+            .accounts({
+                batch: batchPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Batch Deleted (Deactivated) on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program deleteBatch Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor deleteBatch instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Close a batch account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account
+ * @param batchData Object containing batch_id
+ * @returns Transaction signature
+ */
+export const closeBatchOnSolana = async (batchData: any): Promise<string> => {
+    const { batch_id } = batchData;
+
+    const batchIdBN = validateAndConvertBatchId(batch_id, "closing account");
+
+    const [batchPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("batch"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(batchIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.closeBatch) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("closeBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify batch exists
+        const accountInfo = await connection.getAccountInfo(batchPDA);
+        if (accountInfo === null) {
+            throw new Error(`Batch ${batchIdBN.toString()} does not exist on Solana. Cannot close non-existent batch.`);
+        }
+        
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            throw new Error(`Batch ${batchIdBN.toString()} account exists but is not owned by the correct program.`);
+        }
+
+        console.log("Calling closeBatch with batch_id:", batchIdBN.toString());
+        console.log("WARNING: This will permanently delete the account and return rent");
+
+        const txSig = await program.methods
+            .closeBatch(batchIdBN)
+            .accounts({
+                batch: batchPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Batch Account Closed on Solana (rent returned):", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program closeBatch Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor closeBatch instruction: ${err.message || err.toString()}`);
+    }
+};
+
+// ============================================
 // ADMIN INITIALIZATION FUNCTIONS
 // ============================================
 
