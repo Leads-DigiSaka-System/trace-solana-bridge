@@ -64,6 +64,47 @@ export declare const deleteBatchOnSolana: (batchData: any) => Promise<string>;
  */
 export declare const closeBatchOnSolana: (batchData: any) => Promise<string>;
 /**
+ * Submit a new drying record to Solana
+ * @param dryingData Object containing drying fields
+ * @returns Transaction signature
+ */
+export declare const submitDryingToSolana: (dryingData: any) => Promise<string>;
+/**
+ * Check if a drying record exists on Solana
+ * @param dryingId The drying ID to check
+ * @returns Object with exists flag and optional account data
+ */
+export declare const checkDryingExistsOnSolana: (dryingId: any) => Promise<{
+    exists: boolean;
+    pda?: string;
+    accountData?: any;
+}>;
+/**
+ * Get a drying record from Solana
+ * @param dryingId The drying ID to fetch
+ * @returns Drying account data
+ */
+export declare const getDryingFromSolana: (dryingId: any) => Promise<any>;
+/**
+ * Update a drying record on Solana
+ * @param dryingData Object containing drying_id and fields to update
+ * @returns Transaction signature
+ */
+export declare const updateDryingOnSolana: (dryingData: any) => Promise<string>;
+/**
+ * Soft delete a drying record on Solana (set is_active = 0)
+ * @param dryingData Object containing drying_id
+ * @returns Transaction signature
+ */
+export declare const deleteDryingOnSolana: (dryingData: any) => Promise<string>;
+/**
+ * Close a drying account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account
+ * @param dryingData Object containing drying_id
+ * @returns Transaction signature
+ */
+export declare const closeDryingOnSolana: (dryingData: any) => Promise<string>;
+/**
  * Initialize the program (one-time setup)
  * Creates the ProgramConfig account with the fee payer as super_admin
  * @returns Transaction signature

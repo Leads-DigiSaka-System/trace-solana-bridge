@@ -250,6 +250,64 @@
             "args": []
         },
         {
+            "name": "close_drying",
+            "docs": [
+                "Close a drying account (permanently remove from blockchain)",
+                "Returns the rent-exempt SOL back to the authority",
+                "WARNING: This permanently deletes the account - use with caution"
+            ],
+            "discriminator": [
+                64,
+                12,
+                210,
+                108,
+                233,
+                69,
+                119,
+                124
+            ],
+            "accounts": [
+                {
+                    "name": "drying",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    100,
+                                    114,
+                                    121,
+                                    105,
+                                    110,
+                                    103
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "authority"
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "drying_id"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "authority",
+                    "writable": true,
+                    "signer": true
+                }
+            ],
+            "args": [
+                {
+                    "name": "_drying_id",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
             "name": "create_actor",
             "discriminator": [
                 46,
@@ -470,6 +528,111 @@
             ]
         },
         {
+            "name": "create_drying",
+            "docs": [
+                "Create a new drying record in the supply chain",
+                "PDA seeds: [\"drying\", authority, drying_id]"
+            ],
+            "discriminator": [
+                227,
+                71,
+                190,
+                244,
+                30,
+                17,
+                206,
+                189
+            ],
+            "accounts": [
+                {
+                    "name": "drying",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    100,
+                                    114,
+                                    121,
+                                    105,
+                                    110,
+                                    103
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "authority"
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "drying_id"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "authority",
+                    "writable": true,
+                    "signer": true
+                },
+                {
+                    "name": "system_program",
+                    "address": "11111111111111111111111111111111"
+                }
+            ],
+            "args": [
+                {
+                    "name": "drying_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "batch_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "dryer_actor_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "initial_mc",
+                    "type": "u64"
+                },
+                {
+                    "name": "final_mc",
+                    "type": "u64"
+                },
+                {
+                    "name": "temperature",
+                    "type": "u64"
+                },
+                {
+                    "name": "airflow",
+                    "type": "u64"
+                },
+                {
+                    "name": "humidity",
+                    "type": "u64"
+                },
+                {
+                    "name": "duration",
+                    "type": "u64"
+                },
+                {
+                    "name": "price",
+                    "type": "u64"
+                },
+                {
+                    "name": "initial_weight",
+                    "type": "u64"
+                },
+                {
+                    "name": "final_weight",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
             "name": "create_transaction",
             "discriminator": [
                 227,
@@ -661,6 +824,62 @@
             "args": [
                 {
                     "name": "_batch_id",
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "delete_drying",
+            "docs": [
+                "Soft delete a drying record (set is_active = 0)"
+            ],
+            "discriminator": [
+                240,
+                225,
+                43,
+                158,
+                163,
+                38,
+                178,
+                27
+            ],
+            "accounts": [
+                {
+                    "name": "drying",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    100,
+                                    114,
+                                    121,
+                                    105,
+                                    110,
+                                    103
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "authority"
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "drying_id"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "authority",
+                    "writable": true,
+                    "signer": true
+                }
+            ],
+            "args": [
+                {
+                    "name": "_drying_id",
                     "type": "u64"
                 }
             ]
@@ -924,6 +1143,116 @@
             ]
         },
         {
+            "name": "update_drying",
+            "docs": [
+                "Update an existing drying record"
+            ],
+            "discriminator": [
+                52,
+                221,
+                126,
+                176,
+                4,
+                9,
+                246,
+                207
+            ],
+            "accounts": [
+                {
+                    "name": "drying",
+                    "writable": true,
+                    "pda": {
+                        "seeds": [
+                            {
+                                "kind": "const",
+                                "value": [
+                                    100,
+                                    114,
+                                    121,
+                                    105,
+                                    110,
+                                    103
+                                ]
+                            },
+                            {
+                                "kind": "account",
+                                "path": "authority"
+                            },
+                            {
+                                "kind": "arg",
+                                "path": "drying_id"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "name": "authority",
+                    "writable": true,
+                    "signer": true
+                }
+            ],
+            "args": [
+                {
+                    "name": "_drying_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "initial_mc",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "final_mc",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "temperature",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "airflow",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "humidity",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "duration",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "price",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "initial_weight",
+                    "type": {
+                        "option": "u64"
+                    }
+                },
+                {
+                    "name": "final_weight",
+                    "type": {
+                        "option": "u64"
+                    }
+                }
+            ]
+        },
+        {
             "name": "update_transaction",
             "discriminator": [
                 251,
@@ -992,6 +1321,19 @@
                 237,
                 101,
                 67
+            ]
+        },
+        {
+            "name": "DryingAccount",
+            "discriminator": [
+                27,
+                167,
+                137,
+                146,
+                101,
+                69,
+                91,
+                226
             ]
         },
         {
@@ -1258,6 +1600,78 @@
                     {
                         "name": "status",
                         "type": "u8"
+                    },
+                    {
+                        "name": "is_active",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "timestamp",
+                        "type": "i64"
+                    },
+                    {
+                        "name": "bump",
+                        "type": "u8"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "DryingAccount",
+            "docs": [
+                "Drying account - represents a drying process for rice batches",
+                "PDA seeds: [\"drying\", authority, drying_id]"
+            ],
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "drying_id",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "batch_id",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "dryer_actor_id",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "initial_mc",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "final_mc",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "temperature",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "airflow",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "humidity",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "duration",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "price",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "initial_weight",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "final_weight",
+                        "type": "u64"
                     },
                     {
                         "name": "is_active",

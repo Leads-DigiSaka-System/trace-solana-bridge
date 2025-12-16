@@ -1221,6 +1221,404 @@ export const closeBatchOnSolana = async (batchData: any): Promise<string> => {
 };
 
 // ============================================
+// DRYING PROCESS FUNCTIONS
+// ============================================
+
+/**
+ * Helper to validate and convert drying_id to BN
+ */
+const validateAndConvertDryingId = (drying_id: any, operation: string): BN => {
+    if (drying_id === undefined || drying_id === null) {
+        throw new Error(`Missing drying_id for ${operation}`);
+    }
+    
+    let dryingIdBN: BN;
+    if (typeof drying_id === 'string') {
+        dryingIdBN = new BN(drying_id);
+    } else if (typeof drying_id === 'number') {
+        dryingIdBN = new BN(drying_id);
+    } else if (BN.isBN(drying_id)) {
+        dryingIdBN = drying_id;
+    } else {
+        throw new Error(`Invalid drying_id type for ${operation}: ${typeof drying_id}`);
+    }
+    
+    if (dryingIdBN.isNeg()) {
+        throw new Error(`drying_id must be positive for ${operation}`);
+    }
+    
+    return dryingIdBN;
+};
+
+/**
+ * Submit a new drying record to Solana
+ * @param dryingData Object containing drying fields
+ * @returns Transaction signature
+ */
+export const submitDryingToSolana = async (dryingData: any): Promise<string> => {
+    const {
+        drying_id,
+        batch_id,
+        dryer_actor_id,
+        initial_mc,
+        final_mc,
+        temperature,
+        airflow,
+        humidity,
+        duration,
+        price,
+        initial_weight,
+        final_weight
+    } = dryingData;
+
+    const dryingIdBN = validateAndConvertDryingId(drying_id, "submission");
+
+    const [dryingPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("drying"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(dryingIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    // Convert values to BN (Solana uses u64 for numeric fields)
+    // Moisture content: stored as basis points (22.5% = 2250)
+    // Temperature: stored * 100 (45.5°C = 4550)
+    // Airflow: stored * 100
+    // Humidity: stored as basis points
+    // Duration: stored in minutes
+    // Price: stored in cents
+    // Weights: stored in grams
+    const batchIdBN = new BN(batch_id || 0);
+    const dryerActorIdBN = new BN(dryer_actor_id || 0);
+    const initialMcBN = new BN(Math.round((initial_mc || 0) * 100));
+    const finalMcBN = new BN(Math.round((final_mc || 0) * 100));
+    const temperatureBN = new BN(Math.round((temperature || 0) * 100));
+    const airflowBN = new BN(Math.round((airflow || 0) * 100));
+    const humidityBN = new BN(Math.round((humidity || 0) * 100));
+    const durationBN = new BN(Math.round((duration || 0) * 60)); // Convert hours to minutes
+    const priceBN = new BN(Math.round((price || 0) * 100)); // Convert to cents
+    const initialWeightBN = new BN(Math.round((initial_weight || 0) * 1000)); // Convert kg to grams
+    const finalWeightBN = new BN(Math.round((final_weight || 0) * 1000)); // Convert kg to grams
+
+    try {
+        if (!program.methods.createDrying) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("createDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("Calling createDrying with drying_id:", dryingIdBN.toString());
+        console.log("Drying payload:", {
+            drying_id: dryingIdBN.toString(),
+            batch_id: batchIdBN.toString(),
+            dryer_actor_id: dryerActorIdBN.toString(),
+            initial_mc: initialMcBN.toString(),
+            final_mc: finalMcBN.toString(),
+        });
+
+        const txSig = await program.methods
+            .createDrying(
+                dryingIdBN,
+                batchIdBN,
+                dryerActorIdBN,
+                initialMcBN,
+                finalMcBN,
+                temperatureBN,
+                airflowBN,
+                humidityBN,
+                durationBN,
+                priceBN,
+                initialWeightBN,
+                finalWeightBN
+            )
+            .accounts({
+                drying: dryingPDA,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Drying Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program createDrying Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor createDrying instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Check if a drying record exists on Solana
+ * @param dryingId The drying ID to check
+ * @returns Object with exists flag and optional account data
+ */
+export const checkDryingExistsOnSolana = async (dryingId: any): Promise<{ exists: boolean; pda?: string; accountData?: any }> => {
+    const dryingIdBN = validateAndConvertDryingId(dryingId, "existence check");
+
+    const [dryingPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("drying"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(dryingIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        const accountInfo = await connection.getAccountInfo(dryingPDA);
+
+        if (accountInfo === null) {
+            return { exists: false };
+        }
+
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            return { exists: false };
+        }
+
+        return {
+            exists: true,
+            pda: dryingPDA.toBase58()
+        };
+    } catch (err: any) {
+        console.error("Error checking drying existence:", err);
+        return { exists: false };
+    }
+};
+
+/**
+ * Get a drying record from Solana
+ * @param dryingId The drying ID to fetch
+ * @returns Drying account data
+ */
+export const getDryingFromSolana = async (dryingId: any): Promise<any> => {
+    const dryingIdBN = validateAndConvertDryingId(dryingId, "fetch");
+
+    const [dryingPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("drying"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(dryingIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        const dryingAccount = await (program.account as any).dryingAccount.fetch(dryingPDA);
+        
+        return {
+            drying_id: dryingAccount.dryingId.toString(),
+            batch_id: dryingAccount.batchId.toString(),
+            dryer_actor_id: dryingAccount.dryerActorId.toString(),
+            initial_mc: dryingAccount.initialMc.toNumber() / 100,
+            final_mc: dryingAccount.finalMc.toNumber() / 100,
+            temperature: dryingAccount.temperature.toNumber() / 100,
+            airflow: dryingAccount.airflow.toNumber() / 100,
+            humidity: dryingAccount.humidity.toNumber() / 100,
+            duration: dryingAccount.duration.toNumber() / 60, // Convert minutes back to hours
+            price: dryingAccount.price.toNumber() / 100,
+            initial_weight: dryingAccount.initialWeight.toNumber() / 1000, // Convert grams back to kg
+            final_weight: dryingAccount.finalWeight.toNumber() / 1000,
+            is_active: dryingAccount.isActive === 1,
+            timestamp: dryingAccount.timestamp.toNumber(),
+            pda: dryingPDA.toBase58()
+        };
+    } catch (err: any) {
+        console.error("Error fetching drying from Solana:", err);
+        throw new Error(`Failed to fetch drying ${dryingIdBN.toString()} from Solana: ${err.message}`);
+    }
+};
+
+/**
+ * Update a drying record on Solana
+ * @param dryingData Object containing drying_id and fields to update
+ * @returns Transaction signature
+ */
+export const updateDryingOnSolana = async (dryingData: any): Promise<string> => {
+    const { drying_id, ...updateFields } = dryingData;
+
+    const dryingIdBN = validateAndConvertDryingId(drying_id, "update");
+
+    const [dryingPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("drying"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(dryingIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    // Convert optional fields to BN or null
+    const initialMc = updateFields.initial_mc !== undefined 
+        ? new BN(Math.round(updateFields.initial_mc * 100)) : null;
+    const finalMc = updateFields.final_mc !== undefined 
+        ? new BN(Math.round(updateFields.final_mc * 100)) : null;
+    const temperature = updateFields.temperature !== undefined 
+        ? new BN(Math.round(updateFields.temperature * 100)) : null;
+    const airflow = updateFields.airflow !== undefined 
+        ? new BN(Math.round(updateFields.airflow * 100)) : null;
+    const humidity = updateFields.humidity !== undefined 
+        ? new BN(Math.round(updateFields.humidity * 100)) : null;
+    const duration = updateFields.duration !== undefined 
+        ? new BN(Math.round(updateFields.duration * 60)) : null;
+    const price = updateFields.price !== undefined 
+        ? new BN(Math.round(updateFields.price * 100)) : null;
+    const initialWeight = updateFields.initial_weight !== undefined 
+        ? new BN(Math.round(updateFields.initial_weight * 1000)) : null;
+    const finalWeight = updateFields.final_weight !== undefined 
+        ? new BN(Math.round(updateFields.final_weight * 1000)) : null;
+
+    try {
+        if (!program.methods.updateDrying) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("updateDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify drying exists
+        const accountInfo = await connection.getAccountInfo(dryingPDA);
+        if (accountInfo === null) {
+            throw new Error(`Drying ${dryingIdBN.toString()} does not exist on Solana. Cannot update non-existent drying.`);
+        }
+
+        console.log("Calling updateDrying with drying_id:", dryingIdBN.toString());
+
+        const txSig = await program.methods
+            .updateDrying(
+                dryingIdBN,
+                initialMc,
+                finalMc,
+                temperature,
+                airflow,
+                humidity,
+                duration,
+                price,
+                initialWeight,
+                finalWeight
+            )
+            .accounts({
+                drying: dryingPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Drying Updated on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program updateDrying Failed:", err);
+        throw new Error(`Failed to execute Anchor updateDrying instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Soft delete a drying record on Solana (set is_active = 0)
+ * @param dryingData Object containing drying_id
+ * @returns Transaction signature
+ */
+export const deleteDryingOnSolana = async (dryingData: any): Promise<string> => {
+    const { drying_id } = dryingData;
+
+    const dryingIdBN = validateAndConvertDryingId(drying_id, "deletion");
+
+    const [dryingPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("drying"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(dryingIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.deleteDrying) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("deleteDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify drying exists
+        const accountInfo = await connection.getAccountInfo(dryingPDA);
+        if (accountInfo === null) {
+            throw new Error(`Drying ${dryingIdBN.toString()} does not exist on Solana. Cannot delete non-existent drying.`);
+        }
+
+        console.log("Calling deleteDrying with drying_id:", dryingIdBN.toString());
+
+        const txSig = await program.methods
+            .deleteDrying(dryingIdBN)
+            .accounts({
+                drying: dryingPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Drying Deleted (Deactivated) on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program deleteDrying Failed:", err);
+        throw new Error(`Failed to execute Anchor deleteDrying instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Close a drying account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account
+ * @param dryingData Object containing drying_id
+ * @returns Transaction signature
+ */
+export const closeDryingOnSolana = async (dryingData: any): Promise<string> => {
+    const { drying_id } = dryingData;
+
+    const dryingIdBN = validateAndConvertDryingId(drying_id, "closing account");
+
+    const [dryingPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("drying"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(dryingIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.closeDrying) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("closeDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify drying exists
+        const accountInfo = await connection.getAccountInfo(dryingPDA);
+        if (accountInfo === null) {
+            throw new Error(`Drying ${dryingIdBN.toString()} does not exist on Solana. Cannot close non-existent drying.`);
+        }
+
+        console.log("Calling closeDrying with drying_id:", dryingIdBN.toString());
+        console.log("WARNING: This will permanently delete the account and return rent");
+
+        const txSig = await program.methods
+            .closeDrying(dryingIdBN)
+            .accounts({
+                drying: dryingPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Drying Account Closed on Solana (rent returned):", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program closeDrying Failed:", err);
+        throw new Error(`Failed to execute Anchor closeDrying instruction: ${err.message || err.toString()}`);
+    }
+};
+
+// ============================================
 // ADMIN INITIALIZATION FUNCTIONS
 // ============================================
 

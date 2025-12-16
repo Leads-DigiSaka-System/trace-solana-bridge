@@ -15,6 +15,13 @@ import {
     updateBatchOnSolana,
     deleteBatchOnSolana,
     closeBatchOnSolana,
+    // Drying functions
+    submitDryingToSolana,
+    checkDryingExistsOnSolana,
+    getDryingFromSolana,
+    updateDryingOnSolana,
+    deleteDryingOnSolana,
+    closeDryingOnSolana,
     // Admin functions
     initializeProgramOnSolana,
     getProgramConfig,
@@ -409,6 +416,147 @@ app.post('/api/v1/close-batch', verifyHmac, async (req: Request, res: Response) 
         });
     } catch (error: any) {
         console.error('Solana Close Batch Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// DRYING ROUTES
+// ============================================
+
+// Submit a new drying record to Solana
+app.post('/api/v1/submit-drying', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const dryingData = req.body;
+        
+        const txId = await submitDryingToSolana(dryingData);
+        
+        res.status(201).json({
+            message: 'Drying submitted to Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Submit Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Check if drying exists on Solana
+app.get('/api/v1/check-drying/:dryingId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const dryingIdParam = req.params.dryingId;
+        
+        if (!dryingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'dryingId parameter is required' 
+            });
+        }
+
+        const result = await checkDryingExistsOnSolana(dryingIdParam);
+        
+        if (result.exists) {
+            res.status(200).json({
+                exists: true,
+                drying_id: dryingIdParam,
+                pda: result.pda,
+                message: 'Drying exists on Solana'
+            });
+        } else {
+            res.status(200).json({
+                exists: false,
+                drying_id: dryingIdParam,
+                message: 'Drying does not exist on Solana'
+            });
+        }
+    } catch (error: any) {
+        console.error('Solana Check Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get drying details from Solana
+app.get('/api/v1/get-drying/:dryingId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const dryingIdParam = req.params.dryingId;
+        
+        if (!dryingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'dryingId parameter is required' 
+            });
+        }
+
+        // First check if drying exists
+        const existsResult = await checkDryingExistsOnSolana(dryingIdParam);
+        if (!existsResult.exists) {
+            return res.status(404).json({
+                success: false,
+                error: `Drying ${dryingIdParam} not found on Solana`
+            });
+        }
+
+        // Fetch drying data
+        const dryingData = await getDryingFromSolana(dryingIdParam);
+        
+        res.status(200).json({
+            success: true,
+            drying: dryingData
+        });
+    } catch (error: any) {
+        console.error('Solana Get Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update drying on Solana
+app.post('/api/v1/update-drying', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const dryingData = req.body;
+        
+        const txId = await updateDryingOnSolana(dryingData);
+        
+        res.status(200).json({
+            message: 'Drying updated on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Update Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete (soft delete) drying on Solana
+app.post('/api/v1/delete-drying', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const dryingData = req.body;
+        
+        const txId = await deleteDryingOnSolana(dryingData);
+        
+        res.status(200).json({
+            message: 'Drying deleted (deactivated) on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Delete Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Close drying account (permanently remove, return rent)
+app.post('/api/v1/close-drying', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const dryingData = req.body;
+        
+        const txId = await closeDryingOnSolana(dryingData);
+        
+        res.status(200).json({
+            message: 'Drying account closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain.'
+        });
+    } catch (error: any) {
+        console.error('Solana Close Drying Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
