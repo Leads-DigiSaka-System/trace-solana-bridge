@@ -105,6 +105,47 @@ export declare const deleteDryingOnSolana: (dryingData: any) => Promise<string>;
  */
 export declare const closeDryingOnSolana: (dryingData: any) => Promise<string>;
 /**
+ * Submit a new production season to Solana
+ * @param seasonData Object containing season fields
+ * @returns Transaction signature
+ */
+export declare const submitSeasonToSolana: (seasonData: any) => Promise<string>;
+/**
+ * Check if a production season exists on Solana
+ * @param seasonId The season ID to check
+ * @returns Object with exists flag and optional account data
+ */
+export declare const checkSeasonExistsOnSolana: (seasonId: any) => Promise<{
+    exists: boolean;
+    pda?: string;
+    accountData?: any;
+}>;
+/**
+ * Get a production season from Solana
+ * @param seasonId The season ID to fetch
+ * @returns Season account data
+ */
+export declare const getSeasonFromSolana: (seasonId: any) => Promise<any>;
+/**
+ * Update a production season on Solana
+ * @param seasonData Object containing season_id and fields to update
+ * @returns Transaction signature
+ */
+export declare const updateSeasonOnSolana: (seasonData: any) => Promise<string>;
+/**
+ * Soft delete a production season on Solana (set is_active = 0)
+ * @param seasonData Object containing season_id
+ * @returns Transaction signature
+ */
+export declare const deleteSeasonOnSolana: (seasonData: any) => Promise<string>;
+/**
+ * Close a season account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account
+ * @param seasonData Object containing season_id
+ * @returns Transaction signature
+ */
+export declare const closeSeasonOnSolana: (seasonData: any) => Promise<string>;
+/**
  * Initialize the program (one-time setup)
  * Creates the ProgramConfig account with the fee payer as super_admin
  * @returns Transaction signature

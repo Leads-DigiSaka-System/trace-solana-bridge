@@ -1619,6 +1619,517 @@ export const closeDryingOnSolana = async (dryingData: any): Promise<string> => {
 };
 
 // ============================================
+// PRODUCTION SEASON FUNCTIONS
+// ============================================
+
+/**
+ * Helper to validate and convert season_id to BN
+ */
+const validateAndConvertSeasonId = (season_id: any, operation: string): BN => {
+    if (season_id === undefined || season_id === null) {
+        throw new Error(`Missing season_id for ${operation}`);
+    }
+    
+    let seasonIdBN: BN;
+    if (typeof season_id === 'string') {
+        seasonIdBN = new BN(season_id);
+    } else if (typeof season_id === 'number') {
+        seasonIdBN = new BN(season_id);
+    } else if (BN.isBN(season_id)) {
+        seasonIdBN = season_id;
+    } else {
+        throw new Error(`Invalid season_id type for ${operation}: ${typeof season_id}`);
+    }
+    
+    if (seasonIdBN.isNeg()) {
+        throw new Error(`season_id must be positive for ${operation}`);
+    }
+    
+    return seasonIdBN;
+};
+
+/**
+ * Convert date string or Date object to Unix timestamp (i64)
+ */
+const dateToUnixTimestamp = (date: string | Date | null | undefined): number | null => {
+    if (!date) return null;
+    
+    try {
+        const dateObj = typeof date === 'string' ? new Date(date) : date;
+        if (isNaN(dateObj.getTime())) {
+            return null;
+        }
+        return Math.floor(dateObj.getTime() / 1000); // Convert to Unix timestamp (seconds)
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * Submit a new production season to Solana
+ * @param seasonData Object containing season fields
+ * @returns Transaction signature
+ */
+export const submitSeasonToSolana = async (seasonData: any): Promise<string> => {
+    const {
+        season_id,
+        farmer_id,
+        crop_year,
+        season,              // 'wet' or 'dry'
+        variety,
+        planned_practice,
+        planting_date,
+        irrigation_practice,
+        fertilizer_used,
+        pesticide_used,
+        harvest_date,
+        total_yield_kg,
+        processed_yield_kg,
+        moisture_content,
+        carbon_smart_certified,
+        validation_status,  // 'pending', 'validated', 'rejected'
+        validator_id,
+        geotagging,
+    } = seasonData;
+
+    const seasonIdBN = validateAndConvertSeasonId(season_id, "submission");
+
+    const [seasonPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("season"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(seasonIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    // Convert season enum string to u8 (0=wet, 1=dry, 255=not set)
+    let seasonU8: number | null = null;
+    if (season !== undefined && season !== null) {
+        if (season === 'wet') {
+            seasonU8 = 0;
+        } else if (season === 'dry') {
+            seasonU8 = 1;
+        }
+    }
+
+    // Convert validation_status enum string to u8 (0=pending, 1=validated, 2=rejected)
+    let validationStatusU8: number | null = null;
+    if (validation_status !== undefined && validation_status !== null) {
+        const statusMap: { [key: string]: number } = {
+            'pending': 0,
+            'validated': 1,
+            'rejected': 2,
+        };
+        validationStatusU8 = statusMap[validation_status] ?? null;
+    }
+
+    // Convert dates to Unix timestamps
+    const plantingDateTimestamp = dateToUnixTimestamp(planting_date);
+    const harvestDateTimestamp = dateToUnixTimestamp(harvest_date);
+
+    // Convert decimal values to integers for Solana storage
+    // Weights: kg to grams (multiply by 1000)
+    const totalYieldInGrams = total_yield_kg !== undefined && total_yield_kg !== null
+        ? Math.floor(total_yield_kg * 1000) : null;
+    const processedYieldInGrams = processed_yield_kg !== undefined && processed_yield_kg !== null
+        ? Math.floor(processed_yield_kg * 1000) : null;
+    
+    // Moisture: percentage to basis points (multiply by 100)
+    const moistureBasisPoints = moisture_content !== undefined && moisture_content !== null
+        ? Math.floor(moisture_content * 100) : null;
+
+    // Convert carbon_smart_certified boolean to u8
+    const carbonSmartU8 = carbon_smart_certified !== undefined && carbon_smart_certified !== null
+        ? (carbon_smart_certified ? 1 : 0) : null;
+
+    try {
+        if (!program.methods.createSeason) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("createSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("Calling createSeason with season_id:", seasonIdBN.toString());
+        console.log("Season payload:", {
+            season_id: seasonIdBN.toString(),
+            farmer_id,
+            crop_year,
+            season: seasonU8,
+            variety,
+            total_yield_kg: totalYieldInGrams,
+        });
+
+        // Use sentinel values instead of null to reduce stack usage
+        // Sentinels: u64::MAX = not set, i64::MIN = not set, 255 = not set (u8), empty string = not set
+        const MAX_U64 = new BN('18446744073709551615'); // u64::MAX
+        const MIN_I64 = new BN('-9223372036854775808'); // i64::MIN
+        
+        const txSig = await program.methods
+            .createSeason(
+                seasonIdBN,
+                new BN(String(farmer_id || 0), 10),
+                crop_year || "",
+                seasonU8 !== null ? seasonU8 : 255,                    // 255 = not set
+                variety || "",                                          // Empty string = not set
+                planned_practice || "",                                 // Empty string = not set
+                plantingDateTimestamp !== null ? new BN(plantingDateTimestamp, 10) : MIN_I64, // i64::MIN = not set
+                irrigation_practice || "",                             // Empty string = not set
+                fertilizer_used || "",                                  // Empty string = not set
+                pesticide_used || "",                                   // Empty string = not set
+                harvestDateTimestamp !== null ? new BN(harvestDateTimestamp, 10) : MIN_I64,   // i64::MIN = not set
+                totalYieldInGrams !== null ? new BN(String(totalYieldInGrams), 10) : MAX_U64, // u64::MAX = not set
+                processedYieldInGrams !== null ? new BN(String(processedYieldInGrams), 10) : MAX_U64, // u64::MAX = not set
+                moistureBasisPoints !== null ? new BN(String(moistureBasisPoints), 10) : MAX_U64, // u64::MAX = not set
+                carbonSmartU8 !== null ? carbonSmartU8 : 255,           // 255 = not set
+                validationStatusU8 !== null ? validationStatusU8 : 255, // 255 = not set
+                validator_id ? new BN(String(validator_id), 10) : MAX_U64, // u64::MAX = not set
+                geotagging || ""                                        // Empty string = not set
+            )
+            .accounts({
+                season: seasonPDA,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Season Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program createSeason Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor createSeason instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Check if a production season exists on Solana
+ * @param seasonId The season ID to check
+ * @returns Object with exists flag and optional account data
+ */
+export const checkSeasonExistsOnSolana = async (seasonId: any): Promise<{ exists: boolean; pda?: string; accountData?: any }> => {
+    const seasonIdBN = validateAndConvertSeasonId(seasonId, "existence check");
+
+    const [seasonPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("season"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(seasonIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        const accountInfo = await connection.getAccountInfo(seasonPDA);
+
+        if (accountInfo === null) {
+            return { exists: false };
+        }
+
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            return { exists: false };
+        }
+
+        return {
+            exists: true,
+            pda: seasonPDA.toBase58()
+        };
+    } catch (err: any) {
+        console.error("Error checking season existence:", err);
+        return { exists: false };
+    }
+};
+
+/**
+ * Get a production season from Solana
+ * @param seasonId The season ID to fetch
+ * @returns Season account data
+ */
+export const getSeasonFromSolana = async (seasonId: any): Promise<any> => {
+    const seasonIdBN = validateAndConvertSeasonId(seasonId, "fetch");
+
+    const [seasonPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("season"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(seasonIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        const seasonAccount = await (program.account as any).seasonAccount.fetch(seasonPDA);
+        
+        // Convert season u8 back to string
+        const seasonMap: { [key: number]: string } = {
+            0: 'wet',
+            1: 'dry',
+        };
+        const seasonStr = seasonMap[seasonAccount.season] || null;
+
+        // Convert validation_status u8 back to string
+        const validationStatusMap: { [key: number]: string } = {
+            0: 'pending',
+            1: 'validated',
+            2: 'rejected',
+        };
+        const validationStatusStr = validationStatusMap[seasonAccount.validationStatus] || 'pending';
+
+        // Convert Unix timestamps back to ISO date strings
+        const plantingDate = seasonAccount.plantingDate.toNumber() > 0
+            ? new Date(seasonAccount.plantingDate.toNumber() * 1000).toISOString()
+            : null;
+        const harvestDate = seasonAccount.harvestDate.toNumber() > 0
+            ? new Date(seasonAccount.harvestDate.toNumber() * 1000).toISOString()
+            : null;
+
+        return {
+            season_id: seasonAccount.seasonId.toString(),
+            farmer_id: seasonAccount.farmerId.toString(),
+            crop_year: Buffer.from(seasonAccount.cropYear.slice(0, seasonAccount.cropYearLen)).toString('utf8'),
+            season: seasonStr,
+            variety: seasonAccount.varietyLen > 0
+                ? Buffer.from(seasonAccount.variety.slice(0, seasonAccount.varietyLen)).toString('utf8')
+                : null,
+            planned_practice: seasonAccount.plannedPracticeLen > 0
+                ? Buffer.from(seasonAccount.plannedPractice.slice(0, seasonAccount.plannedPracticeLen)).toString('utf8')
+                : null,
+            planting_date: plantingDate,
+            irrigation_practice: seasonAccount.irrigationPracticeLen > 0
+                ? Buffer.from(seasonAccount.irrigationPractice.slice(0, seasonAccount.irrigationPracticeLen)).toString('utf8')
+                : null,
+            fertilizer_used: seasonAccount.fertilizerUsedLen > 0
+                ? Buffer.from(seasonAccount.fertilizerUsed.slice(0, seasonAccount.fertilizerUsedLen)).toString('utf8')
+                : null,
+            pesticide_used: seasonAccount.pesticideUsedLen > 0
+                ? Buffer.from(seasonAccount.pesticideUsed.slice(0, seasonAccount.pesticideUsedLen)).toString('utf8')
+                : null,
+            harvest_date: harvestDate,
+            total_yield_kg: seasonAccount.totalYieldKg.toNumber() / 1000, // Convert grams back to kg
+            processed_yield_kg: seasonAccount.processedYieldKg.toNumber() / 1000, // Convert grams back to kg
+            moisture_content: seasonAccount.moistureContent.toNumber() / 100, // Convert basis points to percentage
+            carbon_smart_certified: seasonAccount.carbonSmartCertified === 1,
+            validation_status: validationStatusStr,
+            validator_id: seasonAccount.validatorId.toString(),
+            geotagging: seasonAccount.geotaggingLen > 0
+                ? Buffer.from(seasonAccount.geotagging.slice(0, seasonAccount.geotaggingLen)).toString('utf8')
+                : null,
+            is_active: seasonAccount.isActive === 1,
+            timestamp: seasonAccount.timestamp.toNumber(),
+            pda: seasonPDA.toBase58()
+        };
+    } catch (err: any) {
+        console.error("Error fetching season from Solana:", err);
+        throw new Error(`Failed to fetch season ${seasonIdBN.toString()} from Solana: ${err.message}`);
+    }
+};
+
+/**
+ * Update a production season on Solana
+ * @param seasonData Object containing season_id and fields to update
+ * @returns Transaction signature
+ */
+export const updateSeasonOnSolana = async (seasonData: any): Promise<string> => {
+    const { season_id, ...updateFields } = seasonData;
+
+    const seasonIdBN = validateAndConvertSeasonId(season_id, "update");
+
+    const [seasonPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("season"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(seasonIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    // Convert optional fields
+    const seasonU8 = updateFields.season !== undefined
+        ? (updateFields.season === 'wet' ? 0 : updateFields.season === 'dry' ? 1 : null)
+        : null;
+
+    const validationStatusU8 = updateFields.validation_status !== undefined
+        ? (updateFields.validation_status === 'pending' ? 0
+            : updateFields.validation_status === 'validated' ? 1
+            : updateFields.validation_status === 'rejected' ? 2
+            : null)
+        : null;
+
+    const plantingDateTimestamp = dateToUnixTimestamp(updateFields.planting_date);
+    const harvestDateTimestamp = dateToUnixTimestamp(updateFields.harvest_date);
+
+    const totalYieldInGrams = updateFields.total_yield_kg !== undefined
+        ? Math.floor(updateFields.total_yield_kg * 1000) : null;
+    const processedYieldInGrams = updateFields.processed_yield_kg !== undefined
+        ? Math.floor(updateFields.processed_yield_kg * 1000) : null;
+    const moistureBasisPoints = updateFields.moisture_content !== undefined
+        ? Math.floor(updateFields.moisture_content * 100) : null;
+
+    const carbonSmartU8 = updateFields.carbon_smart_certified !== undefined
+        ? (updateFields.carbon_smart_certified ? 1 : 0) : null;
+
+    try {
+        if (!program.methods.updateSeason) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("updateSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify season exists
+        const accountInfo = await connection.getAccountInfo(seasonPDA);
+        if (accountInfo === null) {
+            throw new Error(`Season ${seasonIdBN.toString()} does not exist on Solana. Cannot update non-existent season.`);
+        }
+
+        console.log("Calling updateSeason with season_id:", seasonIdBN.toString());
+
+        // Use sentinel values instead of null to reduce stack usage
+        // Sentinels: u64::MAX = don't update, i64::MIN = don't update, 255 = don't update (u8), empty string = don't update
+        const MAX_U64 = new BN('18446744073709551615'); // u64::MAX
+        const MIN_I64 = new BN('-9223372036854775808'); // i64::MIN
+        
+        const txSig = await program.methods
+            .updateSeason(
+                seasonIdBN,
+                updateFields.crop_year || "",                    // Empty string = don't update
+                seasonU8 !== null ? seasonU8 : 255,            // 255 = don't update
+                updateFields.variety || "",                     // Empty string = don't update
+                updateFields.planned_practice || "",            // Empty string = don't update
+                plantingDateTimestamp !== null ? new BN(plantingDateTimestamp, 10) : MIN_I64, // i64::MIN = don't update
+                updateFields.irrigation_practice || "",        // Empty string = don't update
+                updateFields.fertilizer_used || "",             // Empty string = don't update
+                updateFields.pesticide_used || "",              // Empty string = don't update
+                harvestDateTimestamp !== null ? new BN(harvestDateTimestamp, 10) : MIN_I64,   // i64::MIN = don't update
+                totalYieldInGrams !== null ? new BN(String(totalYieldInGrams), 10) : MAX_U64, // u64::MAX = don't update
+                processedYieldInGrams !== null ? new BN(String(processedYieldInGrams), 10) : MAX_U64, // u64::MAX = don't update
+                moistureBasisPoints !== null ? new BN(String(moistureBasisPoints), 10) : MAX_U64, // u64::MAX = don't update
+                carbonSmartU8 !== null ? carbonSmartU8 : 255,   // 255 = don't update
+                validationStatusU8 !== null ? validationStatusU8 : 255, // 255 = don't update
+                updateFields.validator_id ? new BN(String(updateFields.validator_id), 10) : MAX_U64, // u64::MAX = don't update
+                updateFields.geotagging || ""                   // Empty string = don't update
+            )
+            .accounts({
+                season: seasonPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Season Updated on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program updateSeason Failed:", err);
+        throw new Error(`Failed to execute Anchor updateSeason instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Soft delete a production season on Solana (set is_active = 0)
+ * @param seasonData Object containing season_id
+ * @returns Transaction signature
+ */
+export const deleteSeasonOnSolana = async (seasonData: any): Promise<string> => {
+    const { season_id } = seasonData;
+
+    const seasonIdBN = validateAndConvertSeasonId(season_id, "deletion");
+
+    const [seasonPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("season"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(seasonIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.deleteSeason) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("deleteSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify season exists
+        const accountInfo = await connection.getAccountInfo(seasonPDA);
+        if (accountInfo === null) {
+            throw new Error(`Season ${seasonIdBN.toString()} does not exist on Solana. Cannot delete non-existent season.`);
+        }
+
+        console.log("Calling deleteSeason with season_id:", seasonIdBN.toString());
+
+        const txSig = await program.methods
+            .deleteSeason(seasonIdBN)
+            .accounts({
+                season: seasonPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Season Deleted (Deactivated) on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program deleteSeason Failed:", err);
+        throw new Error(`Failed to execute Anchor deleteSeason instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Close a season account permanently (removes from blockchain, returns rent)
+ * WARNING: This permanently deletes the account
+ * @param seasonData Object containing season_id
+ * @returns Transaction signature
+ */
+export const closeSeasonOnSolana = async (seasonData: any): Promise<string> => {
+    const { season_id } = seasonData;
+
+    const seasonIdBN = validateAndConvertSeasonId(season_id, "closing account");
+
+    const [seasonPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("season"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(seasonIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.closeSeason) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("closeSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        // Verify season exists
+        const accountInfo = await connection.getAccountInfo(seasonPDA);
+        if (accountInfo === null) {
+            throw new Error(`Season ${seasonIdBN.toString()} does not exist on Solana. Cannot close non-existent season.`);
+        }
+
+        console.log("Calling closeSeason with season_id:", seasonIdBN.toString());
+        console.log("WARNING: This will permanently delete the account and return rent");
+
+        const txSig = await program.methods
+            .closeSeason(seasonIdBN)
+            .accounts({
+                season: seasonPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Season Account Closed on Solana (rent returned):", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program closeSeason Failed:", err);
+        throw new Error(`Failed to execute Anchor closeSeason instruction: ${err.message || err.toString()}`);
+    }
+};
+
+// ============================================
 // ADMIN INITIALIZATION FUNCTIONS
 // ============================================
 

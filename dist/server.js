@@ -5,6 +5,8 @@ import { checkProgramInitialization, submitActorToSolana, checkActorExistsOnSola
 submitBatchToSolana, checkBatchExistsOnSolana, getBatchFromSolana, updateBatchOnSolana, deleteBatchOnSolana, closeBatchOnSolana, 
 // Drying functions
 submitDryingToSolana, checkDryingExistsOnSolana, getDryingFromSolana, updateDryingOnSolana, deleteDryingOnSolana, closeDryingOnSolana, 
+// Season functions
+submitSeasonToSolana, checkSeasonExistsOnSolana, getSeasonFromSolana, updateSeasonOnSolana, deleteSeasonOnSolana, closeSeasonOnSolana, 
 // Admin functions
 initializeProgramOnSolana, getProgramConfig, getFeePayerPublicKey, closeConfigOnSolana } from './solanaService.js';
 import { verifyHmac, logRequest } from './middleware/hmacAuth.js';
@@ -476,6 +478,132 @@ app.post('/api/v1/close-drying', verifyHmac, async (req, res) => {
     }
     catch (error) {
         console.error('Solana Close Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// ============================================
+// PRODUCTION SEASON ROUTES
+// ============================================
+// Submit a new production season to Solana
+app.post('/api/v1/submit-season', verifyHmac, async (req, res) => {
+    try {
+        const seasonData = req.body;
+        const txId = await submitSeasonToSolana(seasonData);
+        res.status(201).json({
+            message: 'Season submitted to Solana successfully',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Submit Season Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Check if season exists on Solana
+app.get('/api/v1/check-season/:seasonId', verifyHmac, async (req, res) => {
+    try {
+        const seasonIdParam = req.params.seasonId;
+        if (!seasonIdParam) {
+            return res.status(400).json({
+                success: false,
+                error: 'seasonId parameter is required'
+            });
+        }
+        const result = await checkSeasonExistsOnSolana(seasonIdParam);
+        if (result.exists) {
+            res.status(200).json({
+                exists: true,
+                season_id: seasonIdParam,
+                pda: result.pda,
+                message: 'Season exists on Solana'
+            });
+        }
+        else {
+            res.status(200).json({
+                exists: false,
+                season_id: seasonIdParam,
+                message: 'Season does not exist on Solana'
+            });
+        }
+    }
+    catch (error) {
+        console.error('Solana Check Season Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Get season details from Solana
+app.get('/api/v1/get-season/:seasonId', verifyHmac, async (req, res) => {
+    try {
+        const seasonIdParam = req.params.seasonId;
+        if (!seasonIdParam) {
+            return res.status(400).json({
+                success: false,
+                error: 'seasonId parameter is required'
+            });
+        }
+        // First check if season exists
+        const existsResult = await checkSeasonExistsOnSolana(seasonIdParam);
+        if (!existsResult.exists) {
+            return res.status(404).json({
+                success: false,
+                error: `Season ${seasonIdParam} not found on Solana`
+            });
+        }
+        // Fetch season data
+        const seasonData = await getSeasonFromSolana(seasonIdParam);
+        res.status(200).json({
+            success: true,
+            season: seasonData
+        });
+    }
+    catch (error) {
+        console.error('Solana Get Season Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Update season on Solana
+app.post('/api/v1/update-season', verifyHmac, async (req, res) => {
+    try {
+        const seasonData = req.body;
+        const txId = await updateSeasonOnSolana(seasonData);
+        res.status(200).json({
+            message: 'Season updated on Solana successfully',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Update Season Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Delete (soft delete) season on Solana
+app.post('/api/v1/delete-season', verifyHmac, async (req, res) => {
+    try {
+        const seasonData = req.body;
+        const txId = await deleteSeasonOnSolana(seasonData);
+        res.status(200).json({
+            message: 'Season deleted (deactivated) on Solana successfully',
+            transactionId: txId
+        });
+    }
+    catch (error) {
+        console.error('Solana Delete Season Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Close season account (permanently remove, return rent)
+app.post('/api/v1/close-season', verifyHmac, async (req, res) => {
+    try {
+        const seasonData = req.body;
+        const txId = await closeSeasonOnSolana(seasonData);
+        res.status(200).json({
+            message: 'Season account closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain.'
+        });
+    }
+    catch (error) {
+        console.error('Solana Close Season Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
