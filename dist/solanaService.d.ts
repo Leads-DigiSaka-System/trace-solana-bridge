@@ -173,4 +173,16 @@ export declare const getFeePayerPublicKey: () => string;
  * @returns Transaction signature
  */
 export declare const closeConfigOnSolana: () => Promise<string>;
+/**
+ * Submit a new transaction to Solana
+ * @param transactionData Object containing transaction fields
+ * @returns Transaction signature
+ */
+export declare const submitTransactionToSolana: (transactionData: any) => Promise<string>;
+/**
+ * Check if a transaction exists on Solana by nonce
+ * @param nonce The nonce used to create the transaction (u8: 0-255)
+ * @returns true if transaction exists, false otherwise
+ */
+export declare const checkTransactionExistsOnSolana: (nonce: number | string) => Promise<boolean>;
 //# sourceMappingURL=solanaService.d.ts.map

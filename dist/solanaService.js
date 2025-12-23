@@ -1875,4 +1875,170 @@ export const closeConfigOnSolana = async () => {
         throw new Error(`Failed to close config: ${err.message || err.toString()}`);
     }
 };
+// ============================================
+// TRANSACTION MANAGEMENT
+// ============================================
+/**
+ * Submit a new transaction to Solana
+ * @param transactionData Object containing transaction fields
+ * @returns Transaction signature
+ */
+export const submitTransactionToSolana = async (transactionData) => {
+    const { from_actor_id, to_actor_id, quantity, unit_price, payment_reference, nonce, batch_id, moisture, status, is_test, } = transactionData;
+    // Validate required fields
+    if (from_actor_id === undefined || from_actor_id === null) {
+        throw new Error('from_actor_id is required for transaction creation');
+    }
+    if (to_actor_id === undefined || to_actor_id === null) {
+        throw new Error('to_actor_id is required for transaction creation');
+    }
+    if (nonce === undefined || nonce === null) {
+        throw new Error('nonce is required for transaction creation');
+    }
+    if (batch_id === undefined || batch_id === null) {
+        throw new Error('batch_id is required for transaction creation');
+    }
+    // Convert all IDs to BN (always use string to prevent precision loss)
+    const fromActorIdBN = new BN(String(from_actor_id), 10);
+    const toActorIdBN = new BN(String(to_actor_id), 10);
+    const batchIdBN = new BN(String(batch_id), 10);
+    const quantityBN = new BN(String(quantity || 0), 10);
+    const unitPriceBN = new BN(String(unit_price || 0), 10);
+    const moistureBN = new BN(String(moisture || 0), 10);
+    // Validate nonce (u8: 0-255)
+    const nonceNum = parseInt(String(nonce), 10);
+    if (isNaN(nonceNum) || nonceNum < 0 || nonceNum > 255) {
+        throw new Error(`Invalid nonce: ${nonce}. Must be a u8 (0-255)`);
+    }
+    // Validate payment_reference (u8: 0-255)
+    const paymentRefNum = parseInt(String(payment_reference || 0), 10);
+    if (isNaN(paymentRefNum) || paymentRefNum < 0 || paymentRefNum > 255) {
+        throw new Error(`Invalid payment_reference: ${payment_reference}. Must be a u8 (0-255)`);
+    }
+    // Validate status (u8: 0-8 based on our mapping)
+    const statusNum = parseInt(String(status || 0), 10);
+    if (isNaN(statusNum) || statusNum < 0 || statusNum > 8) {
+        throw new Error(`Invalid status: ${status}. Must be a u8 (0-8)`);
+    }
+    // Validate is_test (u8: 0 or 1)
+    const isTestNum = parseInt(String(is_test || 0), 10);
+    if (isTestNum !== 0 && isTestNum !== 1) {
+        throw new Error(`Invalid is_test: ${is_test}. Must be 0 or 1`);
+    }
+    // Derive PDA using seeds: ["tx", authority, nonce]
+    let transactionPDA;
+    let bump;
+    try {
+        [transactionPDA, bump] = PublicKey.findProgramAddressSync([
+            Buffer.from("tx"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from([nonceNum]), // nonce is u8, so single byte
+        ], PROGRAM_ID);
+        console.log("Transaction PDA Derivation:", {
+            nonce: nonceNum,
+            pda: transactionPDA.toBase58(),
+            bump: bump,
+        });
+        // Check if account already exists
+        const accountInfo = await connection.getAccountInfo(transactionPDA);
+        if (accountInfo !== null) {
+            throw new Error(`Transaction account already exists on Solana. ` +
+                `Nonce: ${nonceNum}, PDA: ${transactionPDA.toBase58()}. ` +
+                `This indicates a nonce collision or duplicate creation attempt.`);
+        }
+    }
+    catch (pdaErr) {
+        if (pdaErr.message?.includes('already exists')) {
+            throw pdaErr;
+        }
+        throw new Error(`Failed to derive PDA for nonce ${nonceNum}: ${pdaErr.message}`);
+    }
+    try {
+        if (!program.methods.createTransaction) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("createTransaction method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+        console.log("Calling createTransaction with data:", {
+            from_actor_id: fromActorIdBN.toString(),
+            to_actor_id: toActorIdBN.toString(),
+            quantity: quantityBN.toString(),
+            unit_price: unitPriceBN.toString(),
+            payment_reference: paymentRefNum,
+            nonce: nonceNum,
+            batch_id: batchIdBN.toString(),
+            moisture: moistureBN.toString(),
+            status: statusNum,
+            is_test: isTestNum,
+        });
+        const txSig = await program.methods
+            .createTransaction(fromActorIdBN, toActorIdBN, quantityBN, unitPriceBN, paymentRefNum, nonceNum, batchIdBN, moistureBN, statusNum, isTestNum)
+            .accounts({
+            transaction: transactionPDA,
+            authority: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Transaction Created on Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program createTransaction Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        // Check for specific Anchor errors
+        if (err.message?.includes('assertion') || err.message?.includes('Assertion')) {
+            console.error("PDA Derivation Debug:", {
+                nonce: nonceNum,
+                calculated_pda: transactionPDA.toBase58(),
+                authority: feePayer.publicKey.toBase58(),
+            });
+            throw new Error(`Solana assertion failed: PDA derivation mismatch. ` +
+                `This usually means nonce is invalid or account already exists. ` +
+                `Nonce: ${nonceNum}, PDA: ${transactionPDA.toBase58()}. ` +
+                `Original error: ${err.message}`);
+        }
+        throw new Error(`Failed to execute Anchor instruction: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Check if a transaction exists on Solana by nonce
+ * @param nonce The nonce used to create the transaction (u8: 0-255)
+ * @returns true if transaction exists, false otherwise
+ */
+export const checkTransactionExistsOnSolana = async (nonce) => {
+    try {
+        const nonceNum = parseInt(String(nonce), 10);
+        if (isNaN(nonceNum) || nonceNum < 0 || nonceNum > 255) {
+            throw new Error(`Invalid nonce format: ${nonce}. Must be a u8 (0-255)`);
+        }
+        // PDA for transaction account (seeds: "tx", authority, nonce)
+        const [transactionPDA] = PublicKey.findProgramAddressSync([
+            Buffer.from("tx"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from([nonceNum]), // nonce is u8, single byte
+        ], PROGRAM_ID);
+        // Check if account exists
+        const accountInfo = await connection.getAccountInfo(transactionPDA);
+        if (accountInfo === null) {
+            console.log(`Transaction with nonce ${nonceNum} does not exist on Solana (PDA: ${transactionPDA.toBase58()})`);
+            return false;
+        }
+        // Verify it's owned by our program
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            console.warn(`Transaction with nonce ${nonceNum} account exists but is not owned by our program`);
+            return false;
+        }
+        console.log(`Transaction with nonce ${nonceNum} exists on Solana (PDA: ${transactionPDA.toBase58()})`);
+        return true;
+    }
+    catch (err) {
+        console.error("Error checking transaction existence on Solana:", err);
+        throw new Error(`Failed to check transaction existence: ${err.message || err.toString()}`);
+    }
+};
 //# sourceMappingURL=solanaService.js.map

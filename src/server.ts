@@ -29,6 +29,9 @@ import {
     updateSeasonOnSolana,
     deleteSeasonOnSolana,
     closeSeasonOnSolana,
+    // Transaction functions
+    submitTransactionToSolana,
+    checkTransactionExistsOnSolana,
     // Admin functions
     initializeProgramOnSolana,
     getProgramConfig,
@@ -706,6 +709,68 @@ app.post('/api/v1/close-season', verifyHmac, async (req: Request, res: Response)
     } catch (error: any) {
         console.error('Solana Close Season Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// TRANSACTION ROUTES (PROTECTED)
+// ============================================
+
+// Submit a new transaction to Solana
+app.post('/api/v1/submit-transaction', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const transactionData = req.body;
+        
+        const txId = await submitTransactionToSolana(transactionData);
+        
+        res.status(201).json({
+            message: 'Transaction submitted to Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Submit Transaction Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Check if transaction exists on Solana by nonce
+app.get('/api/v1/check-transaction/:nonce', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const nonceParam = req.params.nonce;
+        
+        if (!nonceParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'nonce parameter is required' 
+            });
+        }
+
+        const nonceNum = parseInt(nonceParam, 10);
+        if (isNaN(nonceNum) || nonceNum < 0 || nonceNum > 255) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid nonce format. Must be a u8 (0-255)' 
+            });
+        }
+
+        const exists = await checkTransactionExistsOnSolana(nonceNum);
+        
+        res.json({
+            exists,
+            nonce: nonceNum,
+            message: exists ? 'Transaction exists on Solana' : 'Transaction does not exist on Solana'
+        });
+    } catch (error: any) {
+        console.error('Error checking transaction existence:', {
+            message: error.message,
+            stack: error.stack,
+            nonce: req.params.nonce
+        });
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error',
+            nonce: req.params.nonce
+        });
     }
 });
 
