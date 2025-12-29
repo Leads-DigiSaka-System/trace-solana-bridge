@@ -308,6 +308,65 @@
       ]
     },
     {
+      "name": "close_milling",
+      "docs": [
+        "Close a milling account (permanently remove from blockchain)",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: This permanently deletes the account - use with caution"
+      ],
+      "discriminator": [
+        2,
+        112,
+        50,
+        240,
+        103,
+        84,
+        130,
+        189
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_milling_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "close_season",
       "docs": [
         "Close a season account (permanently remove from blockchain)",
@@ -692,6 +751,108 @@
       ]
     },
     {
+      "name": "create_milling",
+      "docs": [
+        "Create a new milling record in the supply chain",
+        "PDA seeds: [\"milling\", authority, milling_id]"
+      ],
+      "discriminator": [
+        129,
+        179,
+        218,
+        122,
+        21,
+        28,
+        19,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "milling_id",
+          "type": "u64"
+        },
+        {
+          "name": "miller_id",
+          "type": "u64"
+        },
+        {
+          "name": "batch_id",
+          "type": "u64"
+        },
+        {
+          "name": "milling_type",
+          "type": "string"
+        },
+        {
+          "name": "quality",
+          "type": "string"
+        },
+        {
+          "name": "total_weight_kg",
+          "type": "u64"
+        },
+        {
+          "name": "total_weight_processed_kg",
+          "type": "u64"
+        },
+        {
+          "name": "recovery",
+          "type": "u64"
+        },
+        {
+          "name": "moisture",
+          "type": "u64"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "actual_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "create_season",
       "docs": [
         "Create a new production season in the supply chain",
@@ -1070,6 +1231,63 @@
       "args": [
         {
           "name": "_drying_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "delete_milling",
+      "docs": [
+        "Soft delete a milling record (set is_active = 0)"
+      ],
+      "discriminator": [
+        194,
+        22,
+        78,
+        151,
+        50,
+        38,
+        165,
+        134
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_milling_id",
           "type": "u64"
         }
       ]
@@ -1500,6 +1718,96 @@
       ]
     },
     {
+      "name": "update_milling",
+      "docs": [
+        "Update an existing milling record",
+        "Uses sentinel values: u64::MAX = not set, empty string = not set"
+      ],
+      "discriminator": [
+        135,
+        223,
+        200,
+        167,
+        246,
+        6,
+        182,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_milling_id",
+          "type": "u64"
+        },
+        {
+          "name": "milling_type",
+          "type": "string"
+        },
+        {
+          "name": "quality",
+          "type": "string"
+        },
+        {
+          "name": "total_weight_kg",
+          "type": "u64"
+        },
+        {
+          "name": "total_weight_processed_kg",
+          "type": "u64"
+        },
+        {
+          "name": "recovery",
+          "type": "u64"
+        },
+        {
+          "name": "moisture",
+          "type": "u64"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "actual_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "update_season",
       "docs": [
         "Update an existing production season",
@@ -1703,6 +2011,19 @@
         69,
         91,
         226
+      ]
+    },
+    {
+      "name": "MillingAccount",
+      "discriminator": [
+        166,
+        119,
+        84,
+        11,
+        236,
+        90,
+        119,
+        245
       ]
     },
     {
@@ -2053,6 +2374,92 @@
           },
           {
             "name": "final_weight",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MillingAccount",
+      "docs": [
+        "Milling account - represents a milled rice record in the supply chain",
+        "PDA seeds: [\"milling\", authority, milling_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "milling_id",
+            "type": "u64"
+          },
+          {
+            "name": "miller_id",
+            "type": "u64"
+          },
+          {
+            "name": "batch_id",
+            "type": "u64"
+          },
+          {
+            "name": "milling_type",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "milling_type_len",
+            "type": "u8"
+          },
+          {
+            "name": "quality",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "quality_len",
+            "type": "u8"
+          },
+          {
+            "name": "total_weight_kg",
+            "type": "u64"
+          },
+          {
+            "name": "total_weight_processed_kg",
+            "type": "u64"
+          },
+          {
+            "name": "recovery",
+            "type": "u64"
+          },
+          {
+            "name": "moisture",
+            "type": "u64"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "actual_price",
             "type": "u64"
           },
           {

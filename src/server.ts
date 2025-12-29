@@ -22,6 +22,13 @@ import {
     updateDryingOnSolana,
     deleteDryingOnSolana,
     closeDryingOnSolana,
+    // Milling functions
+    submitMillingToSolana,
+    checkMillingExistsOnSolana,
+    getMillingFromSolana,
+    updateMillingOnSolana,
+    deleteMillingOnSolana,
+    closeMillingOnSolana,
     // Season functions
     submitSeasonToSolana,
     checkSeasonExistsOnSolana,
@@ -567,6 +574,176 @@ app.post('/api/v1/close-drying', verifyHmac, async (req: Request, res: Response)
         });
     } catch (error: any) {
         console.error('Solana Close Drying Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// MILLING ROUTES
+// ============================================
+
+// Submit a new milling record to Solana
+app.post('/api/v1/submit-milling', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const millingData = req.body;
+        
+        const txId = await submitMillingToSolana(millingData);
+        
+        res.status(201).json({
+            message: 'Milling submitted to Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Submit Milling Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Check if milling exists on Solana
+app.get('/api/v1/check-milling/:millingId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const millingIdParam = req.params.millingId;
+        
+        if (!millingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'millingId parameter is required' 
+            });
+        }
+
+        const result = await checkMillingExistsOnSolana(millingIdParam);
+        
+        if (result.exists) {
+            return res.status(200).json({
+                exists: true,
+                pda: result.pda,
+                message: 'Milling exists on Solana'
+            });
+        } else {
+            return res.status(404).json({
+                exists: false,
+                message: 'Milling does not exist on Solana'
+            });
+        }
+    } catch (error: any) {
+        console.error('Solana Check Milling Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get milling data from Solana
+app.get('/api/v1/milling/:millingId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const millingIdParam = req.params.millingId;
+        
+        if (!millingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'millingId parameter is required' 
+            });
+        }
+
+        // First check if milling exists
+        const existsResult = await checkMillingExistsOnSolana(millingIdParam);
+        
+        if (!existsResult.exists) {
+            return res.status(404).json({
+                success: false,
+                exists: false,
+                error: `Milling ${millingIdParam} does not exist on Solana`
+            });
+        }
+
+        // Fetch the milling data
+        const millingData = await getMillingFromSolana(millingIdParam);
+        
+        return res.status(200).json({
+            success: true,
+            milling: millingData
+        });
+    } catch (error: any) {
+        console.error('Solana Get Milling Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update a milling record on Solana
+app.put('/api/v1/milling/:millingId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const millingIdParam = req.params.millingId;
+        const updateData = req.body;
+        
+        if (!millingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'millingId parameter is required' 
+            });
+        }
+
+        // Add milling_id to update data
+        updateData.milling_id = millingIdParam;
+        
+        const txId = await updateMillingOnSolana(updateData);
+        
+        res.status(200).json({
+            message: 'Milling updated on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Update Milling Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Soft delete a milling record on Solana (set is_active = 0)
+app.delete('/api/v1/milling/:millingId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const millingIdParam = req.params.millingId;
+        
+        if (!millingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'millingId parameter is required' 
+            });
+        }
+
+        const millingData = { milling_id: millingIdParam };
+        
+        const txId = await deleteMillingOnSolana(millingData);
+        
+        res.status(200).json({
+            message: 'Milling soft deleted on Solana successfully (is_active = 0)',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Delete Milling Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Close milling account on Solana (permanently delete)
+app.delete('/api/v1/milling/:millingId/close', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const millingIdParam = req.params.millingId;
+        
+        if (!millingIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'millingId parameter is required' 
+            });
+        }
+
+        const millingData = { milling_id: millingIdParam };
+        
+        const txId = await closeMillingOnSolana(millingData);
+        
+        res.status(200).json({
+            message: 'Milling account closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain.'
+        });
+    } catch (error: any) {
+        console.error('Solana Close Milling Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });

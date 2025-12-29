@@ -1279,6 +1279,329 @@ export const closeDryingOnSolana = async (dryingData) => {
     }
 };
 // ============================================
+// MILLING FUNCTIONS
+// ============================================
+/**
+ * Helper to validate and convert milling_id to BN
+ */
+const validateAndConvertMillingId = (milling_id, operation) => {
+    if (milling_id === undefined || milling_id === null) {
+        throw new Error(`Missing milling_id for ${operation}`);
+    }
+    let millingIdBN;
+    if (typeof milling_id === 'string') {
+        millingIdBN = new BN(milling_id);
+    }
+    else if (typeof milling_id === 'number') {
+        millingIdBN = new BN(milling_id);
+    }
+    else if (BN.isBN(milling_id)) {
+        millingIdBN = milling_id;
+    }
+    else {
+        throw new Error(`Invalid milling_id type for ${operation}: ${typeof milling_id}`);
+    }
+    if (millingIdBN.isNeg()) {
+        throw new Error(`milling_id must be positive for ${operation}`);
+    }
+    return millingIdBN;
+};
+/**
+ * Submit a new milling record to Solana
+ * @param millingData Object containing milling details
+ * @returns Transaction signature
+ */
+export const submitMillingToSolana = async (millingData) => {
+    const { milling_id, miller_id, // farmer_id from MySQL
+    batch_id, // Primary batch ID (first from batch_ids array)
+    milling_type, quality, total_weight_kg, total_weight_processed_kg, recovery, moisture, price, actual_price } = millingData;
+    const millingIdBN = validateAndConvertMillingId(milling_id, "submission");
+    const [millingPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("milling"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(millingIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    // Convert values to BN (Solana uses u64 for numeric fields)
+    const millerIdBN = new BN(miller_id || 0);
+    const batchIdBN = new BN(batch_id || 0);
+    // Weight: stored in grams (1000 kg = 1000000 grams) - handle string input
+    const totalWeightKgNum = typeof total_weight_kg === 'string' ? parseFloat(total_weight_kg) : (total_weight_kg || 0);
+    const totalWeightKgBN = new BN(Math.round(totalWeightKgNum * 1000));
+    const totalWeightProcessedKgBN = new BN(Math.round((total_weight_processed_kg || 0) * 1000));
+    // Recovery: stored as basis points (75.5% = 7550)
+    const recoveryBN = new BN(Math.round((recovery || 0) * 100));
+    // Moisture: stored as basis points (12.5% = 1250)
+    const moistureBN = new BN(Math.round((moisture || 0) * 100));
+    // Price: stored in cents
+    const priceBN = new BN(Math.round((price || 0) * 100));
+    const actualPriceBN = new BN(Math.round((actual_price || 0) * 100));
+    try {
+        if (!program.methods.createMilling) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("createMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+        console.log("Calling createMilling with milling_id:", millingIdBN.toString());
+        console.log("Milling payload:", {
+            milling_id: millingIdBN.toString(),
+            miller_id: millerIdBN.toString(),
+            batch_id: batchIdBN.toString(),
+            milling_type: milling_type || '',
+            quality: quality || '',
+            total_weight_kg: totalWeightKgBN.toString(),
+            total_weight_processed_kg: totalWeightProcessedKgBN.toString(),
+        });
+        const txSig = await program.methods
+            .createMilling(millingIdBN, millerIdBN, batchIdBN, milling_type || '', quality || '', totalWeightKgBN, totalWeightProcessedKgBN, recoveryBN, moistureBN, priceBN, actualPriceBN)
+            .accounts({
+            milling: millingPDA,
+            authority: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Milling Submitted to Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program createMilling Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor createMilling instruction: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Check if a milling record exists on Solana
+ * @param millingId The milling ID to check
+ * @returns Object with exists flag and optional account data
+ */
+export const checkMillingExistsOnSolana = async (millingId) => {
+    const millingIdBN = validateAndConvertMillingId(millingId, "existence check");
+    const [millingPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("milling"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(millingIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    try {
+        const accountInfo = await connection.getAccountInfo(millingPDA);
+        if (accountInfo === null) {
+            return { exists: false };
+        }
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            return { exists: false };
+        }
+        return {
+            exists: true,
+            pda: millingPDA.toBase58()
+        };
+    }
+    catch (err) {
+        console.error("Error checking milling existence:", err);
+        return { exists: false };
+    }
+};
+/**
+ * Get a milling record from Solana
+ * @param millingId The milling ID to fetch
+ * @returns Milling account data
+ */
+export const getMillingFromSolana = async (millingId) => {
+    const millingIdBN = validateAndConvertMillingId(millingId, "fetch");
+    const [millingPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("milling"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(millingIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    try {
+        const millingAccount = await program.account.millingAccount.fetch(millingPDA);
+        // Decode milling_type from buffer
+        const millingTypeBytes = millingAccount.millingType.slice(0, millingAccount.millingTypeLen);
+        const millingType = Buffer.from(millingTypeBytes).toString('utf8');
+        // Decode quality from buffer
+        const qualityBytes = millingAccount.quality.slice(0, millingAccount.qualityLen);
+        const quality = Buffer.from(qualityBytes).toString('utf8');
+        return {
+            milling_id: millingAccount.millingId.toString(),
+            miller_id: millingAccount.millerId.toString(),
+            batch_id: millingAccount.batchId.toString(),
+            milling_type: millingType,
+            quality: quality,
+            total_weight_kg: millingAccount.totalWeightKg.toNumber() / 1000, // Convert grams back to kg
+            total_weight_processed_kg: millingAccount.totalWeightProcessedKg.toNumber() / 1000,
+            recovery: millingAccount.recovery.toNumber() / 100,
+            moisture: millingAccount.moisture.toNumber() / 100,
+            price: millingAccount.price.toNumber() / 100,
+            actual_price: millingAccount.actualPrice.toNumber() / 100,
+            is_active: millingAccount.isActive === 1,
+            timestamp: millingAccount.timestamp.toNumber(),
+            pda: millingPDA.toBase58()
+        };
+    }
+    catch (err) {
+        console.error("Error fetching milling from Solana:", err);
+        throw new Error(`Failed to fetch milling ${millingIdBN.toString()} from Solana: ${err.message}`);
+    }
+};
+/**
+ * Update a milling record on Solana
+ * Uses sentinel values: u64::MAX = no update, empty string = no update
+ * @param millingData Object containing milling_id and fields to update
+ * @returns Transaction signature
+ */
+export const updateMillingOnSolana = async (millingData) => {
+    const { milling_id, ...updateFields } = millingData;
+    const millingIdBN = validateAndConvertMillingId(milling_id, "update");
+    const [millingPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("milling"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(millingIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    // Use sentinel values for fields not being updated
+    const U64_MAX = new BN("18446744073709551615"); // u64::MAX
+    // String fields: empty string = no update
+    const millingType = updateFields.milling_type !== undefined ? (updateFields.milling_type || '') : '';
+    const quality = updateFields.quality !== undefined ? (updateFields.quality || '') : '';
+    // Numeric fields: u64::MAX = no update
+    let totalWeightKgBN = U64_MAX;
+    if (updateFields.total_weight_kg !== undefined) {
+        const totalWeightKgNum = typeof updateFields.total_weight_kg === 'string'
+            ? parseFloat(updateFields.total_weight_kg)
+            : updateFields.total_weight_kg;
+        totalWeightKgBN = new BN(Math.round(totalWeightKgNum * 1000));
+    }
+    let totalWeightProcessedKgBN = U64_MAX;
+    if (updateFields.total_weight_processed_kg !== undefined) {
+        totalWeightProcessedKgBN = new BN(Math.round(updateFields.total_weight_processed_kg * 1000));
+    }
+    let recoveryBN = U64_MAX;
+    if (updateFields.recovery !== undefined) {
+        recoveryBN = new BN(Math.round(updateFields.recovery * 100));
+    }
+    let moistureBN = U64_MAX;
+    if (updateFields.moisture !== undefined) {
+        moistureBN = new BN(Math.round(updateFields.moisture * 100));
+    }
+    let priceBN = U64_MAX;
+    if (updateFields.price !== undefined) {
+        priceBN = new BN(Math.round(updateFields.price * 100));
+    }
+    let actualPriceBN = U64_MAX;
+    if (updateFields.actual_price !== undefined) {
+        actualPriceBN = new BN(Math.round(updateFields.actual_price * 100));
+    }
+    try {
+        if (!program.methods.updateMilling) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("updateMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+        // Verify milling exists
+        const accountInfo = await connection.getAccountInfo(millingPDA);
+        if (accountInfo === null) {
+            throw new Error(`Milling ${millingIdBN.toString()} does not exist on Solana. Cannot update non-existent milling.`);
+        }
+        console.log("Calling updateMilling with milling_id:", millingIdBN.toString());
+        const txSig = await program.methods
+            .updateMilling(millingIdBN, millingType, quality, totalWeightKgBN, totalWeightProcessedKgBN, recoveryBN, moistureBN, priceBN, actualPriceBN)
+            .accounts({
+            milling: millingPDA,
+            authority: wallet.publicKey,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Milling Updated on Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program updateMilling Failed:", err);
+        throw new Error(`Failed to execute Anchor updateMilling instruction: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Soft delete a milling record on Solana (set is_active = 0)
+ * @param millingData Object containing milling_id
+ * @returns Transaction signature
+ */
+export const deleteMillingOnSolana = async (millingData) => {
+    const { milling_id } = millingData;
+    const millingIdBN = validateAndConvertMillingId(milling_id, "deletion");
+    const [millingPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("milling"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(millingIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    try {
+        if (!program.methods.deleteMilling) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("deleteMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+        // Verify milling exists
+        const accountInfo = await connection.getAccountInfo(millingPDA);
+        if (accountInfo === null) {
+            throw new Error(`Milling ${millingIdBN.toString()} does not exist on Solana. Cannot delete non-existent milling.`);
+        }
+        console.log("Calling deleteMilling with milling_id:", millingIdBN.toString());
+        const txSig = await program.methods
+            .deleteMilling(millingIdBN)
+            .accounts({
+            milling: millingPDA,
+            authority: wallet.publicKey,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Milling Deleted on Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program deleteMilling Failed:", err);
+        throw new Error(`Failed to execute Anchor deleteMilling instruction: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Close a milling account on Solana (permanently remove and return rent)
+ * WARNING: This permanently deletes the account - use with caution
+ * @param millingData Object containing milling_id
+ * @returns Transaction signature
+ */
+export const closeMillingOnSolana = async (millingData) => {
+    const { milling_id } = millingData;
+    const millingIdBN = validateAndConvertMillingId(milling_id, "closing account");
+    const [millingPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("milling"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(millingIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    try {
+        if (!program.methods.closeMilling) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("closeMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+        // Verify milling exists
+        const accountInfo = await connection.getAccountInfo(millingPDA);
+        if (accountInfo === null) {
+            throw new Error(`Milling ${millingIdBN.toString()} does not exist on Solana. Cannot close non-existent milling.`);
+        }
+        console.log("Calling closeMilling with milling_id:", millingIdBN.toString());
+        console.log("WARNING: This will permanently delete the account and return rent");
+        const txSig = await program.methods
+            .closeMilling(millingIdBN)
+            .accounts({
+            milling: millingPDA,
+            authority: wallet.publicKey,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Milling Account Closed on Solana (rent returned):", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program closeMilling Failed:", err);
+        throw new Error(`Failed to execute Anchor closeMilling instruction: ${err.message || err.toString()}`);
+    }
+};
+// ============================================
 // PRODUCTION SEASON FUNCTIONS
 // ============================================
 /**

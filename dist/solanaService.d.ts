@@ -105,6 +105,48 @@ export declare const deleteDryingOnSolana: (dryingData: any) => Promise<string>;
  */
 export declare const closeDryingOnSolana: (dryingData: any) => Promise<string>;
 /**
+ * Submit a new milling record to Solana
+ * @param millingData Object containing milling details
+ * @returns Transaction signature
+ */
+export declare const submitMillingToSolana: (millingData: any) => Promise<string>;
+/**
+ * Check if a milling record exists on Solana
+ * @param millingId The milling ID to check
+ * @returns Object with exists flag and optional account data
+ */
+export declare const checkMillingExistsOnSolana: (millingId: any) => Promise<{
+    exists: boolean;
+    pda?: string;
+    accountData?: any;
+}>;
+/**
+ * Get a milling record from Solana
+ * @param millingId The milling ID to fetch
+ * @returns Milling account data
+ */
+export declare const getMillingFromSolana: (millingId: any) => Promise<any>;
+/**
+ * Update a milling record on Solana
+ * Uses sentinel values: u64::MAX = no update, empty string = no update
+ * @param millingData Object containing milling_id and fields to update
+ * @returns Transaction signature
+ */
+export declare const updateMillingOnSolana: (millingData: any) => Promise<string>;
+/**
+ * Soft delete a milling record on Solana (set is_active = 0)
+ * @param millingData Object containing milling_id
+ * @returns Transaction signature
+ */
+export declare const deleteMillingOnSolana: (millingData: any) => Promise<string>;
+/**
+ * Close a milling account on Solana (permanently remove and return rent)
+ * WARNING: This permanently deletes the account - use with caution
+ * @param millingData Object containing milling_id
+ * @returns Transaction signature
+ */
+export declare const closeMillingOnSolana: (millingData: any) => Promise<string>;
+/**
  * Submit a new production season to Solana
  * @param seasonData Object containing season fields
  * @returns Transaction signature
