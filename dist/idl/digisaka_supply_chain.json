@@ -518,8 +518,13 @@
                     "type": "u64"
                 },
                 {
-                    "name": "pin",
-                    "type": "string"
+                    "name": "pin_hash",
+                    "type": {
+                        "array": [
+                            "u8",
+                            32
+                        ]
+                    }
                 },
                 {
                     "name": "address",
@@ -2185,17 +2190,13 @@
                         "type": "u64"
                     },
                     {
-                        "name": "pin",
+                        "name": "pin_hash",
                         "type": {
                             "array": [
                                 "u8",
-                                6
+                                32
                             ]
                         }
-                    },
-                    {
-                        "name": "pin_len",
-                        "type": "u8"
                     },
                     {
                         "name": "address",

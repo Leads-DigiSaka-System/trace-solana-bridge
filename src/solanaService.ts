@@ -9,9 +9,36 @@ import * as dotenv from "dotenv";
 import { Buffer } from "buffer";
 import type { Idl } from "@coral-xyz/anchor";
 import BN from "bn.js";
+import { createHash } from "crypto";
 
 // ESM JSON import
 import idlJson from "./idl/digisaka_supply_chain.json" with { type: "json" };
+
+/**
+ * Convert a hex string to a Uint8Array (32 bytes for SHA-256)
+ * If input is not a valid 64-char hex string, generate SHA-256 of input
+ */
+function hexToBytes(hex: string): number[] {
+    // If it's a valid 64-char hex string (SHA-256 hash), convert directly
+    if (/^[0-9a-fA-F]{64}$/.test(hex)) {
+        const bytes: number[] = [];
+        for (let i = 0; i < hex.length; i += 2) {
+            bytes.push(parseInt(hex.substring(i, i + 2), 16));
+        }
+        return bytes;
+    }
+    // Otherwise, hash the input to get a consistent 32-byte value
+    const hash = createHash('sha256').update(hex || '000000').digest();
+    return Array.from(hash);
+}
+
+/**
+ * Generate SHA-256 hash of a PIN and return as 32-byte array
+ */
+function hashPinToBytes(pin: string): number[] {
+    const hash = createHash('sha256').update(pin || '000000').digest();
+    return Array.from(hash);
+}
 
 dotenv.config();
 
@@ -269,6 +296,11 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
             assigned_tps
         });
 
+        // Convert PIN to SHA-256 hash bytes (32 bytes)
+        // If 'pin' is already a hex hash from Laravel, convert it
+        // If it's a plaintext PIN, hash it first (fallback)
+        const pinHashBytes = hexToBytes(pin || '');
+        
         const txSig = await program.methods
             .createActor(
                 actorIdBN, // Use validated BN
@@ -281,7 +313,7 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
                 province || "",
                 city || "",
                 new BN(String(balanceInSmallestUnit), 10), // Convert to string first
-                pin || "000000",
+                pinHashBytes, // SHA-256 hash as 32-byte array
                 address || "",
                 farm_id || "",
                 new BN(String(farmer_id), 10), // Convert to string first
@@ -418,7 +450,8 @@ export const getActorFromSolana = async (actorId: number | string): Promise<any 
                 province: Buffer.from(actorAccount.province.slice(0, actorAccount.provinceLen)).toString('utf8'),
                 city: Buffer.from(actorAccount.city.slice(0, actorAccount.cityLen)).toString('utf8'),
                 balance: actorAccount.balance.toString(), // Use toString() to prevent precision loss
-                pin: Buffer.from(actorAccount.pin.slice(0, actorAccount.pinLen)).toString('utf8'),
+                // PIN hash stored as 32-byte array, convert to hex string
+                pin_hash: Buffer.from(actorAccount.pinHash).toString('hex'),
                 address: Buffer.from(actorAccount.address.slice(0, actorAccount.addressLen)).toString('utf8'),
                 farm_id: Buffer.from(actorAccount.farmId.slice(0, actorAccount.farmIdLen)).toString('utf8'),
                 farmer_id: actorAccount.farmerId.toString(), // Use toString() to prevent precision loss
