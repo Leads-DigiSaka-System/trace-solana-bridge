@@ -3017,3 +3017,490 @@ export const checkTransactionExistsOnSolana = async (nonce: number | string): Pr
         throw new Error(`Failed to check transaction existence: ${err.message || err.toString()}`);
     }
 };
+
+// ============================================
+// BUYBACK FUNCTIONS
+// ============================================
+
+/**
+ * Validate and convert buyback_id to BN
+ */
+function validateAndConvertBuybackId(buyback_id: any, operationName: string = "operation"): BN {
+    if (buyback_id === undefined || buyback_id === null) {
+        throw new Error(`buyback_id is required for ${operationName}`);
+    }
+
+    const buybackIdString = String(buyback_id);
+    
+    if (!/^\d+$/.test(buybackIdString)) {
+        throw new Error(`Invalid buyback_id format: ${buyback_id}. Must be a valid u64 (numeric string)`);
+    }
+    
+    let buybackIdBN: BN;
+    try {
+        buybackIdBN = new BN(buybackIdString, 10);
+    } catch (err) {
+        throw new Error(`Invalid buyback_id format: ${buyback_id}. Must be a valid u64 (number or numeric string)`);
+    }
+
+    const MAX_U64 = new BN('18446744073709551615');
+    if (buybackIdBN.lt(new BN(0)) || buybackIdBN.gt(MAX_U64)) {
+        throw new Error(`buyback_id out of range: ${buyback_id}. Must be between 0 and 18446744073709551615`);
+    }
+
+    if (buybackIdBN.eq(new BN(0))) {
+        throw new Error(`buyback_id cannot be 0. Invalid buyback ID.`);
+    }
+
+    return buybackIdBN;
+}
+
+/**
+ * Submit a new buyback agreement to Solana
+ */
+export const submitBuybackToSolana = async (buybackData: any): Promise<string> => {
+    const {
+        buyback_id,
+        farmer_id,
+        rsbsa_number,
+        provider_id,
+        season_id,
+        farm_size_hectares,
+        pb_borrowed_price,
+        premium_per_kg,
+        input_details,
+        expected_harvest_kg,
+    } = buybackData;
+
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "submission");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    // Convert kg to grams for expected_harvest_kg
+    const expectedHarvestInGrams = expected_harvest_kg !== undefined && expected_harvest_kg !== null
+        ? Math.floor(expected_harvest_kg * 1000) : 0;
+
+    // Convert hectares to square meters (1 hectare = 10000 sq meters)
+    const farmSizeInSqMeters = farm_size_hectares !== undefined && farm_size_hectares !== null
+        ? Math.floor(farm_size_hectares * 10000) : 0;
+
+    // Convert prices to cents (if in pesos, multiply by 100)
+    const pbBorrowedPriceCents = pb_borrowed_price !== undefined && pb_borrowed_price !== null
+        ? Math.floor(pb_borrowed_price * 100) : 0;
+
+    const premiumPerKgCents = premium_per_kg !== undefined && premium_per_kg !== null
+        ? Math.floor(premium_per_kg * 100) : 100; // Default ₱1/kg = 100 cents
+
+    try {
+        if (!program.methods.createBuyback) {
+            console.error("Available methods:", Object.keys(program.methods));
+            throw new Error("createBuyback method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        }
+
+        console.log("Calling createBuyback with buyback_id:", buybackIdBN.toString());
+        console.log("Buyback payload:", {
+            buyback_id: buybackIdBN.toString(),
+            farmer_id,
+            provider_id,
+            season_id,
+            expected_harvest_kg: expectedHarvestInGrams,
+        });
+
+        const txSig = await program.methods
+            .createBuyback(
+                buybackIdBN,
+                new BN(String(farmer_id || 0), 10),
+                new BN(String(rsbsa_number || 0), 10),
+                new BN(String(provider_id || 0), 10),
+                new BN(String(season_id || 0), 10),
+                new BN(String(farmSizeInSqMeters), 10),
+                new BN(String(pbBorrowedPriceCents), 10),
+                new BN(String(premiumPerKgCents), 10),
+                input_details || "",
+                new BN(String(expectedHarvestInGrams), 10)
+            )
+            .accounts({
+                buyback: buybackPDA,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Buyback Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program createBuyback Failed:", err);
+        console.error("Error details:", {
+            message: err.message,
+            stack: err.stack,
+            name: err.name,
+            cause: err.cause
+        });
+        throw new Error(`Failed to execute Anchor createBuyback instruction: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Check if a buyback exists on Solana
+ */
+export const checkBuybackExistsOnSolana = async (buybackId: any): Promise<{ exists: boolean; pda?: string; accountData?: any }> => {
+    const buybackIdBN = validateAndConvertBuybackId(buybackId, "existence check");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        const accountInfo = await connection.getAccountInfo(buybackPDA);
+
+        if (accountInfo === null) {
+            return { exists: false };
+        }
+
+        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+            return { exists: false };
+        }
+
+        return {
+            exists: true,
+            pda: buybackPDA.toBase58()
+        };
+    } catch (err: any) {
+        console.error("Error checking buyback existence:", err);
+        return { exists: false };
+    }
+};
+
+/**
+ * Get a buyback from Solana
+ */
+export const getBuybackFromSolana = async (buybackId: any): Promise<any> => {
+    const buybackIdBN = validateAndConvertBuybackId(buybackId, "fetch");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        const buybackAccount = await (program.account as any).buybackAccount.fetch(buybackPDA);
+
+        // Decode byte arrays to strings
+        const decodeString = (bytes: number[], len: number): string => {
+            return Buffer.from(bytes.slice(0, len)).toString('utf8');
+        };
+
+        return {
+            buyback_id: buybackAccount.buybackId.toString(),
+            farmer_id: buybackAccount.farmerId.toString(),
+            provider_id: buybackAccount.providerId.toString(),
+            rsbsa_number: buybackAccount.rsbsaNumber.toString(),
+            season_id: buybackAccount.seasonId.toString(),
+            farm_size_hectares: buybackAccount.farmSizeHectares.toNumber() / 10000, // sq meters to hectares
+            pb_borrowed_price: buybackAccount.pbBorrowedPrice.toNumber() / 100, // cents to pesos
+            premium_per_kg: buybackAccount.premiumPerKg.toNumber() / 100, // cents to pesos
+            input_details: decodeString(buybackAccount.inputDetails, buybackAccount.inputDetailsLen),
+            expected_harvest_kg: buybackAccount.expectedHarvestKg.toNumber() / 1000, // grams to kg
+            agreement_date: buybackAccount.agreementDate.toNumber(),
+            // In-season tracking
+            risk_events: decodeString(buybackAccount.riskEvents, buybackAccount.riskEventsLen),
+            forecasted_yield_kg: buybackAccount.forecastedYield.toNumber() / 1000, // grams to kg
+            last_inspection_date: buybackAccount.lastInspectionDate.toNumber(),
+            inspection_count: buybackAccount.inspectionCount,
+            major_risk_flag: buybackAccount.majorRiskFlag,
+            // Settlement
+            actual_harvest_kg: buybackAccount.actualHarvestKg.toNumber() / 1000, // grams to kg
+            pm_market_price: buybackAccount.pmMarketPrice.toNumber() / 100, // cents to pesos
+            pr_raw_harvest_price: buybackAccount.prRawHarvestPrice.toNumber() / 100, // cents to pesos
+            total_buyback_price: buybackAccount.totalBuybackPrice.toNumber() / 100, // cents to pesos
+            settlement_date: buybackAccount.settlementDate.toNumber(),
+            check_number: decodeString(buybackAccount.checkNumber, buybackAccount.checkNumberLen),
+            check_date: buybackAccount.checkDate.toNumber(),
+            payment_confirmed: buybackAccount.paymentConfirmed === 1,
+            status: buybackAccount.status, // 0=active, 1=settled, 2=cancelled
+            is_active: buybackAccount.isActive === 1,
+            timestamp: buybackAccount.timestamp.toNumber(),
+            pda: buybackPDA.toBase58(),
+        };
+    } catch (err: any) {
+        console.error("Error fetching buyback from Solana:", err);
+        throw new Error(`Failed to fetch buyback: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Update in-season tracking data for a buyback
+ */
+export const updateInSeasonOnSolana = async (buybackData: any): Promise<string> => {
+    const {
+        buyback_id,
+        risk_event,
+        forecasted_yield,
+        major_risk_flag,
+    } = buybackData;
+
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "in-season update");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    const MAX_U64 = new BN('18446744073709551615');
+
+    // Convert forecasted_yield from kg to grams
+    let forecastedYieldGrams: BN;
+    if (forecasted_yield !== undefined && forecasted_yield !== null) {
+        forecastedYieldGrams = new BN(String(Math.floor(forecasted_yield * 1000)), 10);
+    } else {
+        forecastedYieldGrams = MAX_U64; // Sentinel: don't update
+    }
+
+    // Major risk flag: 255 = don't update
+    const majorRiskU8 = major_risk_flag !== undefined && major_risk_flag !== null
+        ? major_risk_flag : 255;
+
+    try {
+        if (!program.methods.updateInSeason) {
+            throw new Error("updateInSeason method not found in program");
+        }
+
+        console.log("Calling updateInSeason with buyback_id:", buybackIdBN.toString());
+
+        const txSig = await program.methods
+            .updateInSeason(
+                buybackIdBN,
+                risk_event || "",
+                forecastedYieldGrams,
+                majorRiskU8
+            )
+            .accounts({
+                buyback: buybackPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("In-Season Update Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program updateInSeason Failed:", err);
+        throw new Error(`Failed to execute updateInSeason: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Settle a buyback agreement
+ */
+export const settleBuybackOnSolana = async (buybackData: any): Promise<string> => {
+    const {
+        buyback_id,
+        actual_harvest_kg,
+        pm_market_price,
+        check_number,
+        check_date,
+    } = buybackData;
+
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "settlement");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    // Backend already sends values in correct units (grams and cents)
+    const actualHarvestGrams = Math.floor(actual_harvest_kg || 0);
+    const marketPriceCents = Math.floor(pm_market_price || 0);
+
+    // Convert check_date to Unix timestamp
+    let checkDateTimestamp: number;
+    if (check_date) {
+        const dateObj = new Date(check_date);
+        checkDateTimestamp = Math.floor(dateObj.getTime() / 1000);
+    } else {
+        checkDateTimestamp = Math.floor(Date.now() / 1000);
+    }
+
+    try {
+        if (!program.methods.settleBuyback) {
+            throw new Error("settleBuyback method not found in program");
+        }
+
+        console.log("Calling settleBuyback with buyback_id:", buybackIdBN.toString());
+        console.log("Settlement payload:", {
+            actual_harvest_kg: actualHarvestGrams,
+            pm_market_price: marketPriceCents,
+            check_number,
+            check_date: checkDateTimestamp,
+        });
+
+        const txSig = await program.methods
+            .settleBuyback(
+                buybackIdBN,
+                new BN(String(actualHarvestGrams), 10),
+                new BN(String(marketPriceCents), 10),
+                check_number || "",
+                new BN(String(checkDateTimestamp), 10)
+            )
+            .accounts({
+                buyback: buybackPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Buyback Settlement Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program settleBuyback Failed:", err);
+        throw new Error(`Failed to execute settleBuyback: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Confirm payment for a settled buyback
+ */
+export const confirmBuybackPaymentOnSolana = async (buybackData: any): Promise<string> => {
+    const { buyback_id } = buybackData;
+
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "payment confirmation");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.confirmPayment) {
+            throw new Error("confirmPayment method not found in program");
+        }
+
+        console.log("Calling confirmPayment with buyback_id:", buybackIdBN.toString());
+
+        const txSig = await program.methods
+            .confirmPayment(buybackIdBN)
+            .accounts({
+                buyback: buybackPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Payment Confirmation Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program confirmPayment Failed:", err);
+        throw new Error(`Failed to execute confirmPayment: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Soft delete a buyback (set is_active = 0)
+ */
+export const deleteBuybackOnSolana = async (buybackData: any): Promise<string> => {
+    const { buyback_id } = buybackData;
+
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "deletion");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.deleteBuyback) {
+            throw new Error("deleteBuyback method not found in program");
+        }
+
+        console.log("Calling deleteBuyback with buyback_id:", buybackIdBN.toString());
+
+        const txSig = await program.methods
+            .deleteBuyback(buybackIdBN)
+            .accounts({
+                buyback: buybackPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Buyback Deletion Submitted to Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program deleteBuyback Failed:", err);
+        throw new Error(`Failed to execute deleteBuyback: ${err.message || err.toString()}`);
+    }
+};
+
+/**
+ * Close a buyback account (permanently remove, return rent)
+ */
+export const closeBuybackOnSolana = async (buybackData: any): Promise<string> => {
+    const { buyback_id } = buybackData;
+
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "close");
+
+    const [buybackPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("buyback"),
+            feePayer.publicKey.toBuffer(),
+            Buffer.from(buybackIdBN.toArray("le", 8)),
+        ],
+        PROGRAM_ID
+    );
+
+    try {
+        if (!program.methods.closeBuyback) {
+            throw new Error("closeBuyback method not found in program");
+        }
+
+        console.log("Calling closeBuyback with buyback_id:", buybackIdBN.toString());
+
+        const txSig = await program.methods
+            .closeBuyback(buybackIdBN)
+            .accounts({
+                buyback: buybackPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        console.log("Buyback Account Closed on Solana:", txSig);
+        return txSig;
+    } catch (err: any) {
+        console.error("Anchor Program closeBuyback Failed:", err);
+        throw new Error(`Failed to execute closeBuyback: ${err.message || err.toString()}`);
+    }
+};
