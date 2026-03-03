@@ -48,6 +48,8 @@ import {
     confirmBuybackPaymentOnSolana,
     deleteBuybackOnSolana,
     closeBuybackOnSolana,
+    updatePaymentScheduleOnSolana,
+    markBuybackSettledOnSolana,
     // Admin functions
     initializeProgramOnSolana,
     getProgramConfig,
@@ -1087,15 +1089,49 @@ app.post('/api/v1/settle-buyback', verifyHmac, async (req: Request, res: Respons
 app.post('/api/v1/confirm-buyback-payment', verifyHmac, async (req: Request, res: Response) => {
     try {
         const buybackData = req.body;
-        
+
         const txId = await confirmBuybackPaymentOnSolana(buybackData);
-        
+
         res.status(200).json({
             message: 'Buyback payment confirmed on Solana successfully',
             transactionId: txId
         });
     } catch (error: any) {
         console.error('Solana Confirm Payment Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update payment schedule for a pending buyback (to_settle or pay_later)
+app.post('/api/v1/update-payment-schedule', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+
+        const txId = await updatePaymentScheduleOnSolana(buybackData);
+
+        res.status(200).json({
+            message: 'Payment schedule updated on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Update Payment Schedule Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Mark a pending buyback as settled (to_settle/pay_later → settled)
+app.post('/api/v1/mark-buyback-settled', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+
+        const txId = await markBuybackSettledOnSolana(buybackData);
+
+        res.status(200).json({
+            message: 'Buyback marked as settled on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Mark Buyback Settled Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });

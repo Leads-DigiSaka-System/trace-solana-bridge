@@ -248,9 +248,18 @@ export declare const getBuybackFromSolana: (buybackId: any) => Promise<any>;
  */
 export declare const updateInSeasonOnSolana: (buybackData: any) => Promise<string>;
 /**
- * Settle a buyback agreement
+ * Settle a buyback agreement with new status workflow
+ * Supports: active → settled/to_settle/pay_later
  */
 export declare const settleBuybackOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Update payment schedule for a pending buyback (to_settle or pay_later)
+ */
+export declare const updatePaymentScheduleOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Mark a pending buyback as settled (to_settle/pay_later → settled)
+ */
+export declare const markBuybackSettledOnSolana: (buybackData: any) => Promise<string>;
 /**
  * Confirm payment for a settled buyback
  */

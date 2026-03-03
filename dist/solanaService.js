@@ -2610,10 +2610,24 @@ export const updateInSeasonOnSolana = async (buybackData) => {
     }
 };
 /**
- * Settle a buyback agreement
+ * Status constants matching smart contract
+ */
+const BUYBACK_STATUS = {
+    ACTIVE: 0,
+    SETTLED: 1,
+    CANCELLED: 2,
+    TO_SETTLE: 3,
+    PAY_LATER: 4,
+};
+/**
+ * Settle a buyback agreement with new status workflow
+ * Supports: active → settled/to_settle/pay_later
  */
 export const settleBuybackOnSolana = async (buybackData) => {
-    const { buyback_id, actual_harvest_kg, pm_market_price, check_number, check_date, } = buybackData;
+    const { buyback_id, actual_harvest_kg, pm_market_price, check_number, check_date, status, // 'settled', 'to_settle', 'pay_later'
+    target_payment_date, // ISO date string or timestamp
+    total_price_signed, // Signed total in cents (positive=provider owes, negative=farmer owes)
+     } = buybackData;
     const buybackIdBN = validateAndConvertBuybackId(buyback_id, "settlement");
     const [buybackPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("buyback"),
@@ -2630,8 +2644,34 @@ export const settleBuybackOnSolana = async (buybackData) => {
         checkDateTimestamp = Math.floor(dateObj.getTime() / 1000);
     }
     else {
-        checkDateTimestamp = Math.floor(Date.now() / 1000);
+        checkDateTimestamp = 0;
     }
+    // Convert status string to numeric value
+    let statusValue;
+    switch (status) {
+        case 'settled':
+            statusValue = BUYBACK_STATUS.SETTLED;
+            break;
+        case 'to_settle':
+            statusValue = BUYBACK_STATUS.TO_SETTLE;
+            break;
+        case 'pay_later':
+            statusValue = BUYBACK_STATUS.PAY_LATER;
+            break;
+        default:
+            statusValue = BUYBACK_STATUS.SETTLED;
+    }
+    // Convert target_payment_date to Unix timestamp
+    let targetPaymentTimestamp;
+    if (target_payment_date) {
+        const dateObj = new Date(target_payment_date);
+        targetPaymentTimestamp = Math.floor(dateObj.getTime() / 1000);
+    }
+    else {
+        targetPaymentTimestamp = 0;
+    }
+    // Total price is already in cents from backend
+    const totalPriceCents = Math.floor(total_price_signed || 0);
     try {
         if (!program.methods.settleBuyback) {
             throw new Error("settleBuyback method not found in program");
@@ -2642,9 +2682,12 @@ export const settleBuybackOnSolana = async (buybackData) => {
             pm_market_price: marketPriceCents,
             check_number,
             check_date: checkDateTimestamp,
+            status: statusValue,
+            target_payment_date: targetPaymentTimestamp,
+            total_price_signed: totalPriceCents,
         });
         const txSig = await program.methods
-            .settleBuyback(buybackIdBN, new BN(String(actualHarvestGrams), 10), new BN(String(marketPriceCents), 10), check_number || "", new BN(String(checkDateTimestamp), 10))
+            .settleBuyback(buybackIdBN, new BN(String(actualHarvestGrams), 10), new BN(String(marketPriceCents), 10), check_number || "", new BN(String(checkDateTimestamp), 10), statusValue, new BN(String(targetPaymentTimestamp), 10), new BN(String(totalPriceCents), 10))
             .accounts({
             buyback: buybackPDA,
             authority: wallet.publicKey,
@@ -2657,6 +2700,80 @@ export const settleBuybackOnSolana = async (buybackData) => {
     catch (err) {
         console.error("Anchor Program settleBuyback Failed:", err);
         throw new Error(`Failed to execute settleBuyback: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Update payment schedule for a pending buyback (to_settle or pay_later)
+ */
+export const updatePaymentScheduleOnSolana = async (buybackData) => {
+    const { buyback_id, target_payment_date, } = buybackData;
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "payment schedule update");
+    const [buybackPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("buyback"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(buybackIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    // Convert target_payment_date to Unix timestamp
+    let targetPaymentTimestamp;
+    if (target_payment_date) {
+        const dateObj = new Date(target_payment_date);
+        targetPaymentTimestamp = Math.floor(dateObj.getTime() / 1000);
+    }
+    else {
+        throw new Error("target_payment_date is required");
+    }
+    try {
+        if (!program.methods.updatePaymentSchedule) {
+            throw new Error("updatePaymentSchedule method not found in program");
+        }
+        console.log("Calling updatePaymentSchedule with buyback_id:", buybackIdBN.toString());
+        console.log("New target_payment_date:", targetPaymentTimestamp);
+        const txSig = await program.methods
+            .updatePaymentSchedule(buybackIdBN, new BN(String(targetPaymentTimestamp), 10))
+            .accounts({
+            buyback: buybackPDA,
+            authority: wallet.publicKey,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Payment Schedule Update Submitted to Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program updatePaymentSchedule Failed:", err);
+        throw new Error(`Failed to execute updatePaymentSchedule: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Mark a pending buyback as settled (to_settle/pay_later → settled)
+ */
+export const markBuybackSettledOnSolana = async (buybackData) => {
+    const { buyback_id } = buybackData;
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "mark settled");
+    const [buybackPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("buyback"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(buybackIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    try {
+        if (!program.methods.markBuybackSettled) {
+            throw new Error("markBuybackSettled method not found in program");
+        }
+        console.log("Calling markBuybackSettled with buyback_id:", buybackIdBN.toString());
+        const txSig = await program.methods
+            .markBuybackSettled(buybackIdBN)
+            .accounts({
+            buyback: buybackPDA,
+            authority: wallet.publicKey,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Buyback Marked Settled on Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program markBuybackSettled Failed:", err);
+        throw new Error(`Failed to execute markBuybackSettled: ${err.message || err.toString()}`);
     }
 };
 /**
