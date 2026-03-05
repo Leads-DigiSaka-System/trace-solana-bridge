@@ -39,6 +39,17 @@ import {
     // Transaction functions
     submitTransactionToSolana,
     checkTransactionExistsOnSolana,
+    // Buyback functions
+    submitBuybackToSolana,
+    checkBuybackExistsOnSolana,
+    getBuybackFromSolana,
+    updateInSeasonOnSolana,
+    settleBuybackOnSolana,
+    confirmBuybackPaymentOnSolana,
+    deleteBuybackOnSolana,
+    closeBuybackOnSolana,
+    updatePaymentScheduleOnSolana,
+    markBuybackSettledOnSolana,
     // Admin functions
     initializeProgramOnSolana,
     getProgramConfig,
@@ -948,6 +959,215 @@ app.get('/api/v1/check-transaction/:nonce', verifyHmac, async (req: Request, res
             error: error.message || 'Internal server error',
             nonce: req.params.nonce
         });
+    }
+});
+
+// ============================================
+// BUYBACK ROUTES
+// ============================================
+
+// Submit a new buyback agreement to Solana
+app.post('/api/v1/submit-buyback', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+        
+        const txId = await submitBuybackToSolana(buybackData);
+        
+        res.status(201).json({
+            message: 'Buyback submitted to Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Submit Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Check if buyback exists on Solana
+app.get('/api/v1/check-buyback/:buybackId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackIdParam = req.params.buybackId;
+        
+        if (!buybackIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'buybackId parameter is required' 
+            });
+        }
+
+        const result = await checkBuybackExistsOnSolana(buybackIdParam);
+        
+        if (result.exists) {
+            res.status(200).json({
+                exists: true,
+                buyback_id: buybackIdParam,
+                pda: result.pda,
+                message: 'Buyback exists on Solana'
+            });
+        } else {
+            res.status(200).json({
+                exists: false,
+                buyback_id: buybackIdParam,
+                message: 'Buyback does not exist on Solana'
+            });
+        }
+    } catch (error: any) {
+        console.error('Solana Check Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get buyback details from Solana
+app.get('/api/v1/get-buyback/:buybackId', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackIdParam = req.params.buybackId;
+        
+        if (!buybackIdParam) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'buybackId parameter is required' 
+            });
+        }
+
+        // First check if buyback exists
+        const existsResult = await checkBuybackExistsOnSolana(buybackIdParam);
+        if (!existsResult.exists) {
+            return res.status(404).json({
+                success: false,
+                error: `Buyback ${buybackIdParam} not found on Solana`
+            });
+        }
+
+        // Fetch buyback data
+        const buybackData = await getBuybackFromSolana(buybackIdParam);
+        
+        res.status(200).json({
+            success: true,
+            buyback: buybackData
+        });
+    } catch (error: any) {
+        console.error('Solana Get Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update in-season tracking data for a buyback
+app.post('/api/v1/update-in-season', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+        
+        const txId = await updateInSeasonOnSolana(buybackData);
+        
+        res.status(200).json({
+            message: 'In-season tracking updated on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Update In-Season Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Settle a buyback agreement
+app.post('/api/v1/settle-buyback', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+        
+        const txId = await settleBuybackOnSolana(buybackData);
+        
+        res.status(200).json({
+            message: 'Buyback settled on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Settle Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Confirm payment for a settled buyback
+app.post('/api/v1/confirm-buyback-payment', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+
+        const txId = await confirmBuybackPaymentOnSolana(buybackData);
+
+        res.status(200).json({
+            message: 'Buyback payment confirmed on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Confirm Payment Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update payment schedule for a pending buyback (to_settle or pay_later)
+app.post('/api/v1/update-payment-schedule', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+
+        const txId = await updatePaymentScheduleOnSolana(buybackData);
+
+        res.status(200).json({
+            message: 'Payment schedule updated on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Update Payment Schedule Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Mark a pending buyback as settled (to_settle/pay_later → settled)
+app.post('/api/v1/mark-buyback-settled', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+
+        const txId = await markBuybackSettledOnSolana(buybackData);
+
+        res.status(200).json({
+            message: 'Buyback marked as settled on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Mark Buyback Settled Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete (soft delete) buyback on Solana
+app.post('/api/v1/delete-buyback', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+        
+        const txId = await deleteBuybackOnSolana(buybackData);
+        
+        res.status(200).json({
+            message: 'Buyback deleted (deactivated) on Solana successfully',
+            transactionId: txId
+        });
+    } catch (error: any) {
+        console.error('Solana Delete Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Close buyback account (permanently remove, return rent)
+app.post('/api/v1/close-buyback', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+        
+        const txId = await closeBuybackOnSolana(buybackData);
+        
+        res.status(200).json({
+            message: 'Buyback account closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain.'
+        });
+    } catch (error: any) {
+        console.error('Solana Close Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
