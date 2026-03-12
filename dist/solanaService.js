@@ -146,7 +146,9 @@ export const checkProgramInitialization = async () => {
 export const submitActorToSolana = async (actorData) => {
     const { actor_id, user_id, name, roles, // JSON string or array of roles
     organization, // Optional organization (BLO, Buyback, COOP)
-    is_active, province, city, balance, pin, address, farm_id, farmer_id, assigned_tps, } = actorData;
+    is_active, province, city, balance, pin, address, farm_id, farmer_id, assigned_tps, 
+    // NEW: optional farmer signature key from Laravel
+    farmer_signature_key, } = actorData;
     // ============================================
     // VALIDATE AND CONVERT actor_id
     // ============================================
@@ -236,7 +238,8 @@ export const submitActorToSolana = async (actorData) => {
             address,
             farm_id,
             farmer_id,
-            assigned_tps
+            assigned_tps,
+            farmer_signature_key,
         });
         // Convert PIN to SHA-256 hash bytes (32 bytes)
         // If 'pin' is already a hex hash from Laravel, convert it
@@ -248,8 +251,8 @@ export const submitActorToSolana = async (actorData) => {
         name || "", actorTypeU8, rolesString || "", organization || null, isActiveU8, province || "", city || "", new BN(String(balanceInSmallestUnit), 10), // Convert to string first
         pinHashBytes, // SHA-256 hash as 32-byte array
         address || "", farm_id || "", new BN(String(farmer_id), 10), // Convert to string first
-        new BN(String(assigned_tps), 10) // Convert to string first
-        )
+        new BN(String(assigned_tps), 10), // Convert to string first
+        farmer_signature_key || "")
             .accounts({
             actor: actorPDA,
             authority: wallet.publicKey,
@@ -2429,7 +2432,9 @@ function validateAndConvertBuybackId(buyback_id, operationName = "operation") {
  * Submit a new buyback agreement to Solana
  */
 export const submitBuybackToSolana = async (buybackData) => {
-    const { buyback_id, farmer_id, rsbsa_number, provider_id, season_id, farm_size_hectares, pb_borrowed_price, premium_per_kg, input_details, expected_harvest_kg, } = buybackData;
+    const { buyback_id, farmer_id, rsbsa_number, provider_id, season_id, farm_size_hectares, pb_borrowed_price, premium_per_kg, input_details, expected_harvest_kg, 
+    // NEW: document + signature keys from Laravel
+    contract_pdf_key, farmer_signature_key, staff_signature_key, } = buybackData;
     const buybackIdBN = validateAndConvertBuybackId(buyback_id, "submission");
     const [buybackPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("buyback"),
@@ -2461,7 +2466,7 @@ export const submitBuybackToSolana = async (buybackData) => {
             expected_harvest_kg: expectedHarvestInGrams,
         });
         const txSig = await program.methods
-            .createBuyback(buybackIdBN, new BN(String(farmer_id || 0), 10), new BN(String(rsbsa_number || 0), 10), new BN(String(provider_id || 0), 10), new BN(String(season_id || 0), 10), new BN(String(farmSizeInSqMeters), 10), new BN(String(pbBorrowedPriceCents), 10), new BN(String(premiumPerKgCents), 10), input_details || "", new BN(String(expectedHarvestInGrams), 10))
+            .createBuyback(buybackIdBN, new BN(String(farmer_id || 0), 10), new BN(String(rsbsa_number || 0), 10), new BN(String(provider_id || 0), 10), new BN(String(season_id || 0), 10), new BN(String(farmSizeInSqMeters), 10), new BN(String(pbBorrowedPriceCents), 10), new BN(String(premiumPerKgCents), 10), input_details || "", new BN(String(expectedHarvestInGrams), 10), contract_pdf_key || "", farmer_signature_key || "", staff_signature_key || "")
             .accounts({
             buyback: buybackPDA,
             authority: wallet.publicKey,
@@ -2627,7 +2632,8 @@ export const settleBuybackOnSolana = async (buybackData) => {
     const { buyback_id, actual_harvest_kg, pm_market_price, check_number, check_date, status, // 'settled', 'to_settle', 'pay_later'
     target_payment_date, // ISO date string or timestamp
     total_price_signed, // Signed total in cents (positive=provider owes, negative=farmer owes)
-     } = buybackData;
+    // NEW: document + signature keys
+    contract_pdf_key, farmer_signature_key, staff_signature_key, } = buybackData;
     const buybackIdBN = validateAndConvertBuybackId(buyback_id, "settlement");
     const [buybackPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("buyback"),
@@ -2685,9 +2691,12 @@ export const settleBuybackOnSolana = async (buybackData) => {
             status: statusValue,
             target_payment_date: targetPaymentTimestamp,
             total_price_signed: totalPriceCents,
+            contract_pdf_key,
+            farmer_signature_key,
+            staff_signature_key,
         });
         const txSig = await program.methods
-            .settleBuyback(buybackIdBN, new BN(String(actualHarvestGrams), 10), new BN(String(marketPriceCents), 10), check_number || "", new BN(String(checkDateTimestamp), 10), statusValue, new BN(String(targetPaymentTimestamp), 10), new BN(String(totalPriceCents), 10))
+            .settleBuyback(buybackIdBN, new BN(String(actualHarvestGrams), 10), new BN(String(marketPriceCents), 10), check_number || "", new BN(String(checkDateTimestamp), 10), statusValue, new BN(String(targetPaymentTimestamp), 10), new BN(String(totalPriceCents), 10), contract_pdf_key || "", farmer_signature_key || "", staff_signature_key || "")
             .accounts({
             buyback: buybackPDA,
             authority: wallet.publicKey,
