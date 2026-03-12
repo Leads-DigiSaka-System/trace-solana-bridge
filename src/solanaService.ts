@@ -191,6 +191,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
         farm_id,
         farmer_id,
         assigned_tps,
+        // NEW: optional farmer signature key from Laravel
+        farmer_signature_key,
     } = actorData;
 
     // ============================================
@@ -293,7 +295,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
             address,
             farm_id,
             farmer_id,
-            assigned_tps
+            assigned_tps,
+            farmer_signature_key,
         });
 
         // Convert PIN to SHA-256 hash bytes (32 bytes)
@@ -317,7 +320,8 @@ export const submitActorToSolana = async (actorData: any): Promise<string> => {
                 address || "",
                 farm_id || "",
                 new BN(String(farmer_id), 10), // Convert to string first
-                new BN(String(assigned_tps), 10) // Convert to string first
+                new BN(String(assigned_tps), 10), // Convert to string first
+                farmer_signature_key || ""
             )
             .accounts({
                 actor: actorPDA,
@@ -3070,6 +3074,10 @@ export const submitBuybackToSolana = async (buybackData: any): Promise<string> =
         premium_per_kg,
         input_details,
         expected_harvest_kg,
+        // NEW: document + signature keys from Laravel
+        contract_pdf_key,
+        farmer_signature_key,
+        staff_signature_key,
     } = buybackData;
 
     const buybackIdBN = validateAndConvertBuybackId(buyback_id, "submission");
@@ -3124,7 +3132,10 @@ export const submitBuybackToSolana = async (buybackData: any): Promise<string> =
                 new BN(String(pbBorrowedPriceCents), 10),
                 new BN(String(premiumPerKgCents), 10),
                 input_details || "",
-                new BN(String(expectedHarvestInGrams), 10)
+                new BN(String(expectedHarvestInGrams), 10),
+                contract_pdf_key || "",
+                farmer_signature_key || "",
+                staff_signature_key || ""
             )
             .accounts({
                 buyback: buybackPDA,
@@ -3335,6 +3346,10 @@ export const settleBuybackOnSolana = async (buybackData: any): Promise<string> =
         status,                  // 'settled', 'to_settle', 'pay_later'
         target_payment_date,     // ISO date string or timestamp
         total_price_signed,      // Signed total in cents (positive=provider owes, negative=farmer owes)
+        // NEW: document + signature keys
+        contract_pdf_key,
+        farmer_signature_key,
+        staff_signature_key,
     } = buybackData;
 
     const buybackIdBN = validateAndConvertBuybackId(buyback_id, "settlement");
@@ -3403,6 +3418,9 @@ export const settleBuybackOnSolana = async (buybackData: any): Promise<string> =
             status: statusValue,
             target_payment_date: targetPaymentTimestamp,
             total_price_signed: totalPriceCents,
+            contract_pdf_key,
+            farmer_signature_key,
+            staff_signature_key,
         });
 
         const txSig = await program.methods
@@ -3414,7 +3432,10 @@ export const settleBuybackOnSolana = async (buybackData: any): Promise<string> =
                 new BN(String(checkDateTimestamp), 10),
                 statusValue,
                 new BN(String(targetPaymentTimestamp), 10),
-                new BN(String(totalPriceCents), 10)
+                new BN(String(totalPriceCents), 10),
+                contract_pdf_key || "",
+                farmer_signature_key || "",
+                staff_signature_key || ""
             )
             .accounts({
                 buyback: buybackPDA,
