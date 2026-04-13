@@ -1,0 +1,2544 @@
+{
+  "address": "8reLtj3xNmEdx6o2Lc39hQdbpnqt3ouNTGdntwMmsypg",
+  "metadata": {
+    "name": "tracing",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "DigiSaka tracing program – supply chain tracking"
+  },
+  "instructions": [
+    {
+      "name": "add_transaction",
+      "discriminator": [
+        48,
+        96,
+        174,
+        112,
+        81,
+        30,
+        239,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "transaction",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "transaction.nonce",
+                "account": "TransactionAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "from_actor_id",
+          "type": "u32"
+        },
+        {
+          "name": "to_actor_id",
+          "type": "u32"
+        },
+        {
+          "name": "quantity",
+          "type": "u32"
+        },
+        {
+          "name": "unit_price",
+          "type": "u64"
+        },
+        {
+          "name": "payment_reference",
+          "type": "string"
+        },
+        {
+          "name": "batch_id",
+          "type": "u32"
+        },
+        {
+          "name": "moisture",
+          "type": "u16"
+        },
+        {
+          "name": "status",
+          "type": "u8"
+        },
+        {
+          "name": "is_test",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "close_batch",
+      "docs": [
+        "Close a batch account (permanently remove from blockchain)",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: This permanently deletes the account - use with caution"
+      ],
+      "discriminator": [
+        166,
+        174,
+        35,
+        253,
+        209,
+        211,
+        181,
+        28
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "batch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_batch_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "close_drying",
+      "docs": [
+        "Close a drying account (permanently remove from blockchain)",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: This permanently deletes the account - use with caution"
+      ],
+      "discriminator": [
+        64,
+        12,
+        210,
+        108,
+        233,
+        69,
+        119,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "drying",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  121,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "drying_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_drying_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "close_milling",
+      "docs": [
+        "Close a milling account (permanently remove from blockchain)",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: This permanently deletes the account - use with caution"
+      ],
+      "discriminator": [
+        2,
+        112,
+        50,
+        240,
+        103,
+        84,
+        130,
+        189
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_milling_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "close_season",
+      "docs": [
+        "Close a season account (permanently remove from blockchain)",
+        "Returns the rent-exempt SOL back to the authority",
+        "WARNING: This permanently deletes the account - use with caution",
+        "Optimized to minimize stack usage - avoid accessing account fields"
+      ],
+      "discriminator": [
+        162,
+        198,
+        31,
+        37,
+        77,
+        0,
+        199,
+        152
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "season_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "season_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "create_batch",
+      "docs": [
+        "Create a new rice batch in the supply chain",
+        "PDA seeds: [\"batch\", authority, batch_id]"
+      ],
+      "discriminator": [
+        159,
+        198,
+        248,
+        43,
+        248,
+        31,
+        235,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "batch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                122,
+                100,
+                204,
+                96,
+                34,
+                174,
+                226,
+                194,
+                204,
+                165,
+                42,
+                132,
+                51,
+                116,
+                85,
+                99,
+                58,
+                234,
+                189,
+                128,
+                147,
+                53,
+                155,
+                80,
+                67,
+                191,
+                68,
+                8,
+                253,
+                73,
+                201,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "name": "current_holder_actor"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "batch_id",
+          "type": "u32"
+        },
+        {
+          "name": "qr_code",
+          "type": "string"
+        },
+        {
+          "name": "season_id",
+          "type": "u32"
+        },
+        {
+          "name": "current_holder_id",
+          "type": "u32"
+        },
+        {
+          "name": "milling_id",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "drying_id",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "batch_weight_kg",
+          "type": "u32"
+        },
+        {
+          "name": "moisture_content",
+          "type": "u16"
+        },
+        {
+          "name": "price_per_kg",
+          "type": "u64"
+        },
+        {
+          "name": "status",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "create_drying",
+      "docs": [
+        "Create a new drying record in the supply chain",
+        "PDA seeds: [\"drying\", authority, drying_id]"
+      ],
+      "discriminator": [
+        227,
+        71,
+        190,
+        244,
+        30,
+        17,
+        206,
+        189
+      ],
+      "accounts": [
+        {
+          "name": "drying",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  121,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "drying_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                122,
+                100,
+                204,
+                96,
+                34,
+                174,
+                226,
+                194,
+                204,
+                165,
+                42,
+                132,
+                51,
+                116,
+                85,
+                99,
+                58,
+                234,
+                189,
+                128,
+                147,
+                53,
+                155,
+                80,
+                67,
+                191,
+                68,
+                8,
+                253,
+                73,
+                201,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "name": "dryer_actor"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "drying_id",
+          "type": "u32"
+        },
+        {
+          "name": "batch_id",
+          "type": "u32"
+        },
+        {
+          "name": "dryer_actor_id",
+          "type": "u32"
+        },
+        {
+          "name": "initial_mc",
+          "type": "u32"
+        },
+        {
+          "name": "final_mc",
+          "type": "u32"
+        },
+        {
+          "name": "temperature",
+          "type": "u16"
+        },
+        {
+          "name": "airflow",
+          "type": "u32"
+        },
+        {
+          "name": "humidity",
+          "type": "u16"
+        },
+        {
+          "name": "duration",
+          "type": "u16"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "initial_weight",
+          "type": "u32"
+        },
+        {
+          "name": "final_weight",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "create_milling",
+      "docs": [
+        "Create a new milling record in the supply chain",
+        "PDA seeds: [\"milling\", authority, milling_id]"
+      ],
+      "discriminator": [
+        129,
+        179,
+        218,
+        122,
+        21,
+        28,
+        19,
+        67
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                122,
+                100,
+                204,
+                96,
+                34,
+                174,
+                226,
+                194,
+                204,
+                165,
+                42,
+                132,
+                51,
+                116,
+                85,
+                99,
+                58,
+                234,
+                189,
+                128,
+                147,
+                53,
+                155,
+                80,
+                67,
+                191,
+                68,
+                8,
+                253,
+                73,
+                201,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "name": "miller_actor"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "milling_id",
+          "type": "u32"
+        },
+        {
+          "name": "miller_id",
+          "type": "u32"
+        },
+        {
+          "name": "batch_id",
+          "type": "u32"
+        },
+        {
+          "name": "milling_type",
+          "type": "string"
+        },
+        {
+          "name": "quality",
+          "type": "string"
+        },
+        {
+          "name": "total_weight_kg",
+          "type": "u32"
+        },
+        {
+          "name": "total_weight_processed_kg",
+          "type": "u32"
+        },
+        {
+          "name": "recovery",
+          "type": "u16"
+        },
+        {
+          "name": "moisture",
+          "type": "u16"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "actual_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_season",
+      "docs": [
+        "Create a new production season in the supply chain",
+        "PDA seeds: [\"season\", authority, season_id]",
+        "Uses sentinel values to reduce stack usage (too many Option<String> parameters cause stack overflow)",
+        "Sentinels: u64/u16/u32::MAX = not set (per field), i64::MIN = not set, 255 = not set (u8), empty string = not set"
+      ],
+      "discriminator": [
+        38,
+        108,
+        29,
+        127,
+        60,
+        126,
+        101,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "season_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                122,
+                100,
+                204,
+                96,
+                34,
+                174,
+                226,
+                194,
+                204,
+                165,
+                42,
+                132,
+                51,
+                116,
+                85,
+                99,
+                58,
+                234,
+                189,
+                128,
+                147,
+                53,
+                155,
+                80,
+                67,
+                191,
+                68,
+                8,
+                253,
+                73,
+                201,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "name": "farmer_actor"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "season_id",
+          "type": "u32"
+        },
+        {
+          "name": "farmer_id",
+          "type": "u32"
+        },
+        {
+          "name": "crop_year",
+          "type": "string"
+        },
+        {
+          "name": "season",
+          "type": "u8"
+        },
+        {
+          "name": "variety",
+          "type": "string"
+        },
+        {
+          "name": "planned_practice",
+          "type": "string"
+        },
+        {
+          "name": "planting_date",
+          "type": "i64"
+        },
+        {
+          "name": "irrigation_practice",
+          "type": "string"
+        },
+        {
+          "name": "fertilizer_used",
+          "type": "string"
+        },
+        {
+          "name": "pesticide_used",
+          "type": "string"
+        },
+        {
+          "name": "harvest_date",
+          "type": "i64"
+        },
+        {
+          "name": "total_yield_kg",
+          "type": "u64"
+        },
+        {
+          "name": "processed_yield_kg",
+          "type": "u64"
+        },
+        {
+          "name": "moisture_content",
+          "type": "u16"
+        },
+        {
+          "name": "carbon_smart_certified",
+          "type": "u8"
+        },
+        {
+          "name": "validation_status",
+          "type": "u8"
+        },
+        {
+          "name": "validator_id",
+          "type": "u32"
+        },
+        {
+          "name": "geotagging",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "create_transaction",
+      "discriminator": [
+        227,
+        193,
+        53,
+        239,
+        55,
+        126,
+        112,
+        105
+      ],
+      "accounts": [
+        {
+          "name": "transaction",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                122,
+                100,
+                204,
+                96,
+                34,
+                174,
+                226,
+                194,
+                204,
+                165,
+                42,
+                132,
+                51,
+                116,
+                85,
+                99,
+                58,
+                234,
+                189,
+                128,
+                147,
+                53,
+                155,
+                80,
+                67,
+                191,
+                68,
+                8,
+                253,
+                73,
+                201,
+                9
+              ]
+            }
+          }
+        },
+        {
+          "name": "from_actor",
+          "docs": [
+            "`CoreActorAccount` off the `try_accounts` stack frame)."
+          ]
+        },
+        {
+          "name": "to_actor"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "from_actor_id",
+          "type": "u32"
+        },
+        {
+          "name": "to_actor_id",
+          "type": "u32"
+        },
+        {
+          "name": "quantity",
+          "type": "u32"
+        },
+        {
+          "name": "unit_price",
+          "type": "u64"
+        },
+        {
+          "name": "payment_reference",
+          "type": "string"
+        },
+        {
+          "name": "nonce",
+          "type": "u32"
+        },
+        {
+          "name": "batch_id",
+          "type": "u32"
+        },
+        {
+          "name": "moisture",
+          "type": "u16"
+        },
+        {
+          "name": "status",
+          "type": "u8"
+        },
+        {
+          "name": "is_test",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "delete_batch",
+      "docs": [
+        "Soft delete a rice batch (set is_active = 0)"
+      ],
+      "discriminator": [
+        30,
+        133,
+        57,
+        244,
+        133,
+        88,
+        53,
+        58
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "batch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_batch_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "delete_drying",
+      "docs": [
+        "Soft delete a drying record (set is_active = 0)"
+      ],
+      "discriminator": [
+        240,
+        225,
+        43,
+        158,
+        163,
+        38,
+        178,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "drying",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  121,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "drying_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_drying_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "delete_milling",
+      "docs": [
+        "Soft delete a milling record (set is_active = 0)"
+      ],
+      "discriminator": [
+        194,
+        22,
+        78,
+        151,
+        50,
+        38,
+        165,
+        134
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_milling_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "delete_season",
+      "docs": [
+        "Soft delete a production season (set is_active = 0)",
+        "Optimized to minimize stack usage - access fields directly without intermediate references"
+      ],
+      "discriminator": [
+        156,
+        5,
+        217,
+        201,
+        255,
+        181,
+        122,
+        152
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "season_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "season_id",
+          "type": "u32"
+        }
+      ]
+    },
+    {
+      "name": "update_batch",
+      "docs": [
+        "Update an existing rice batch"
+      ],
+      "discriminator": [
+        112,
+        151,
+        99,
+        143,
+        137,
+        135,
+        24,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "batch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  97,
+                  116,
+                  99,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "batch_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_batch_id",
+          "type": "u32"
+        },
+        {
+          "name": "current_holder_id",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "milling_id",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "drying_id",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "validator",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "batch_weight_kg",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "moisture_content",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "price_per_kg",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "option": "u8"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_drying",
+      "docs": [
+        "Update an existing drying record"
+      ],
+      "discriminator": [
+        52,
+        221,
+        126,
+        176,
+        4,
+        9,
+        246,
+        207
+      ],
+      "accounts": [
+        {
+          "name": "drying",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  121,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "drying_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_drying_id",
+          "type": "u32"
+        },
+        {
+          "name": "initial_mc",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "final_mc",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "temperature",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "airflow",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "humidity",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "duration",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "price",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "initial_weight",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "final_weight",
+          "type": {
+            "option": "u32"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_milling",
+      "docs": [
+        "Update an existing milling record",
+        "Sentinels: u32::MAX / u16::MAX / u64::MAX = no update; empty string = no update"
+      ],
+      "discriminator": [
+        135,
+        223,
+        200,
+        167,
+        246,
+        6,
+        182,
+        12
+      ],
+      "accounts": [
+        {
+          "name": "milling",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  108,
+                  108,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "milling_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_milling_id",
+          "type": "u32"
+        },
+        {
+          "name": "milling_type",
+          "type": "string"
+        },
+        {
+          "name": "quality",
+          "type": "string"
+        },
+        {
+          "name": "total_weight_kg",
+          "type": "u32"
+        },
+        {
+          "name": "total_weight_processed_kg",
+          "type": "u32"
+        },
+        {
+          "name": "recovery",
+          "type": "u16"
+        },
+        {
+          "name": "moisture",
+          "type": "u16"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "actual_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_season",
+      "docs": [
+        "Update an existing production season",
+        "Uses sentinel values to reduce stack usage (too many Option<String> parameters cause stack overflow)",
+        "Sentinels: u64/u16/u32::MAX = don't update (per field), i64::MIN = don't update, 255 = don't update (u8), empty string = don't update"
+      ],
+      "discriminator": [
+        225,
+        91,
+        34,
+        185,
+        228,
+        6,
+        98,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "season_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_season_id",
+          "type": "u32"
+        },
+        {
+          "name": "crop_year",
+          "type": "string"
+        },
+        {
+          "name": "season",
+          "type": "u8"
+        },
+        {
+          "name": "variety",
+          "type": "string"
+        },
+        {
+          "name": "planned_practice",
+          "type": "string"
+        },
+        {
+          "name": "planting_date",
+          "type": "i64"
+        },
+        {
+          "name": "irrigation_practice",
+          "type": "string"
+        },
+        {
+          "name": "fertilizer_used",
+          "type": "string"
+        },
+        {
+          "name": "pesticide_used",
+          "type": "string"
+        },
+        {
+          "name": "harvest_date",
+          "type": "i64"
+        },
+        {
+          "name": "total_yield_kg",
+          "type": "u64"
+        },
+        {
+          "name": "processed_yield_kg",
+          "type": "u64"
+        },
+        {
+          "name": "moisture_content",
+          "type": "u16"
+        },
+        {
+          "name": "carbon_smart_certified",
+          "type": "u8"
+        },
+        {
+          "name": "validation_status",
+          "type": "u8"
+        },
+        {
+          "name": "validator_id",
+          "type": "u32"
+        },
+        {
+          "name": "geotagging",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "update_transaction",
+      "discriminator": [
+        251,
+        71,
+        35,
+        36,
+        240,
+        56,
+        180,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "transaction",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  120
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "transaction.nonce",
+                "account": "TransactionAccount"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "quantity",
+          "type": {
+            "option": "u32"
+          }
+        },
+        {
+          "name": "unit_price",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "payment_reference",
+          "type": {
+            "option": "string"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "BatchAccount",
+      "discriminator": [
+        129,
+        131,
+        54,
+        99,
+        180,
+        237,
+        101,
+        67
+      ]
+    },
+    {
+      "name": "BridgeConfig",
+      "discriminator": [
+        40,
+        206,
+        51,
+        233,
+        246,
+        40,
+        178,
+        85
+      ]
+    },
+    {
+      "name": "DryingAccount",
+      "discriminator": [
+        27,
+        167,
+        137,
+        146,
+        101,
+        69,
+        91,
+        226
+      ]
+    },
+    {
+      "name": "MillingAccount",
+      "discriminator": [
+        166,
+        119,
+        84,
+        11,
+        236,
+        90,
+        119,
+        245
+      ]
+    },
+    {
+      "name": "SeasonAccount",
+      "discriminator": [
+        203,
+        208,
+        27,
+        60,
+        61,
+        82,
+        85,
+        12
+      ]
+    },
+    {
+      "name": "TransactionAccount",
+      "discriminator": [
+        146,
+        125,
+        253,
+        167,
+        250,
+        226,
+        175,
+        123
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not the bridge authority"
+    },
+    {
+      "code": 6001,
+      "name": "ActorIdMismatch",
+      "msg": "Actor ID does not match passed argument"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidCoreActorOwner",
+      "msg": "Core actor account is not owned by the digisaka-core program"
+    },
+    {
+      "code": 6003,
+      "name": "CoreActorNotActive",
+      "msg": "Core actor is not active"
+    }
+  ],
+  "types": [
+    {
+      "name": "BatchAccount",
+      "docs": [
+        "Rice Batch account - represents a batch of rice in the supply chain",
+        "PDA seeds: [\"batch\", authority, batch_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "batch_id",
+            "type": "u32"
+          },
+          {
+            "name": "qr_code",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "qr_code_len",
+            "type": "u8"
+          },
+          {
+            "name": "season_id",
+            "type": "u32"
+          },
+          {
+            "name": "current_holder_id",
+            "type": "u32"
+          },
+          {
+            "name": "milling_id",
+            "type": "u32"
+          },
+          {
+            "name": "drying_id",
+            "type": "u32"
+          },
+          {
+            "name": "validator",
+            "type": "u32"
+          },
+          {
+            "name": "batch_weight_kg",
+            "type": "u32"
+          },
+          {
+            "name": "moisture_content",
+            "type": "u16"
+          },
+          {
+            "name": "price_per_kg",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "seed_distribution_id",
+            "type": "u32"
+          },
+          {
+            "name": "fertilizer_distribution_ids",
+            "type": {
+              "vec": "u32"
+            }
+          },
+          {
+            "name": "other_provision_distribution_ids",
+            "type": {
+              "vec": "u32"
+            }
+          },
+          {
+            "name": "carbon_certified",
+            "type": "u8"
+          },
+          {
+            "name": "farm_gps_lat",
+            "type": "i32"
+          },
+          {
+            "name": "farm_gps_lon",
+            "type": "i32"
+          },
+          {
+            "name": "images_ipfs",
+            "type": {
+              "vec": {
+                "array": [
+                  "u8",
+                  59
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "BridgeConfig",
+      "docs": [
+        "Stores the single bridge wallet authorised to sign all",
+        "state-mutating instructions in this program.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "bridge_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "initialized_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DryingAccount",
+      "docs": [
+        "Drying account - represents a drying process for rice batches",
+        "PDA seeds: [\"drying\", authority, drying_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "drying_id",
+            "type": "u32"
+          },
+          {
+            "name": "batch_id",
+            "type": "u32"
+          },
+          {
+            "name": "dryer_actor_id",
+            "type": "u32"
+          },
+          {
+            "name": "initial_mc",
+            "type": "u32"
+          },
+          {
+            "name": "final_mc",
+            "type": "u32"
+          },
+          {
+            "name": "temperature",
+            "type": "u16"
+          },
+          {
+            "name": "airflow",
+            "type": "u32"
+          },
+          {
+            "name": "humidity",
+            "type": "u16"
+          },
+          {
+            "name": "duration",
+            "type": "u16"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "initial_weight",
+            "type": "u32"
+          },
+          {
+            "name": "final_weight",
+            "type": "u32"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MillingAccount",
+      "docs": [
+        "Milling account - represents a milled rice record in the supply chain",
+        "PDA seeds: [\"milling\", authority, milling_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "milling_id",
+            "type": "u32"
+          },
+          {
+            "name": "miller_id",
+            "type": "u32"
+          },
+          {
+            "name": "batch_id",
+            "type": "u32"
+          },
+          {
+            "name": "milling_type",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "milling_type_len",
+            "type": "u8"
+          },
+          {
+            "name": "quality",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "quality_len",
+            "type": "u8"
+          },
+          {
+            "name": "total_weight_kg",
+            "type": "u32"
+          },
+          {
+            "name": "total_weight_processed_kg",
+            "type": "u32"
+          },
+          {
+            "name": "recovery",
+            "type": "u16"
+          },
+          {
+            "name": "moisture",
+            "type": "u16"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "actual_price",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeasonAccount",
+      "docs": [
+        "Production Season account - represents a production season in the supply chain",
+        "PDA seeds: [\"season\", authority, season_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "season_id",
+            "type": "u32"
+          },
+          {
+            "name": "farmer_id",
+            "type": "u32"
+          },
+          {
+            "name": "crop_year",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "crop_year_len",
+            "type": "u8"
+          },
+          {
+            "name": "season",
+            "type": "u8"
+          },
+          {
+            "name": "variety",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "variety_len",
+            "type": "u8"
+          },
+          {
+            "name": "planned_practice",
+            "type": {
+              "array": [
+                "u8",
+                200
+              ]
+            }
+          },
+          {
+            "name": "planned_practice_len",
+            "type": "u8"
+          },
+          {
+            "name": "planting_date",
+            "type": "i64"
+          },
+          {
+            "name": "irrigation_practice",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "irrigation_practice_len",
+            "type": "u8"
+          },
+          {
+            "name": "fertilizer_used",
+            "type": {
+              "array": [
+                "u8",
+                300
+              ]
+            }
+          },
+          {
+            "name": "fertilizer_used_len",
+            "type": "u16"
+          },
+          {
+            "name": "pesticide_used",
+            "type": {
+              "array": [
+                "u8",
+                300
+              ]
+            }
+          },
+          {
+            "name": "pesticide_used_len",
+            "type": "u16"
+          },
+          {
+            "name": "harvest_date",
+            "type": "i64"
+          },
+          {
+            "name": "total_yield_kg",
+            "type": "u64"
+          },
+          {
+            "name": "processed_yield_kg",
+            "type": "u64"
+          },
+          {
+            "name": "moisture_content",
+            "type": "u16"
+          },
+          {
+            "name": "carbon_smart_certified",
+            "type": "u8"
+          },
+          {
+            "name": "validation_status",
+            "type": "u8"
+          },
+          {
+            "name": "validator_id",
+            "type": "u32"
+          },
+          {
+            "name": "geotagging",
+            "type": {
+              "array": [
+                "u8",
+                500
+              ]
+            }
+          },
+          {
+            "name": "geotagging_len",
+            "type": "u16"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "seed_distribution_id",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TransactionAccount",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "from_actor_id",
+            "type": "u32"
+          },
+          {
+            "name": "to_actor_id",
+            "type": "u32"
+          },
+          {
+            "name": "quantity",
+            "type": "u32"
+          },
+          {
+            "name": "unit_price",
+            "type": "u64"
+          },
+          {
+            "name": "payment_reference",
+            "type": {
+              "array": [
+                "u8",
+                16
+              ]
+            }
+          },
+          {
+            "name": "payment_reference_len",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "nonce",
+            "type": "u32"
+          },
+          {
+            "name": "transaction_count",
+            "type": "u64"
+          },
+          {
+            "name": "batch_id",
+            "type": "u32"
+          },
+          {
+            "name": "moisture",
+            "docs": [
+              "Basis points (e.g. 1450 = 14.5%). Used `u16` not `u8` — basis points exceed 255."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "is_test",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
