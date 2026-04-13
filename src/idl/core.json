@@ -1,0 +1,1849 @@
+{
+  "address": "9EmtNU2gHnfZV3388ncLcWZgLWP8eVnM476M9tawYL4Q",
+  "metadata": {
+    "name": "digisaka_core",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "DigiSaka core program – actor registry and cluster management"
+  },
+  "instructions": [
+    {
+      "name": "add_farmer_to_cluster",
+      "docs": [
+        "Add a farmer to a cluster.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        252,
+        176,
+        185,
+        119,
+        135,
+        227,
+        197,
+        173
+      ],
+      "accounts": [
+        {
+          "name": "link",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  114,
+                  109,
+                  101,
+                  114,
+                  95,
+                  99,
+                  108,
+                  117,
+                  115,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "cluster_id"
+              },
+              {
+                "kind": "arg",
+                "path": "farmer_actor_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "cluster",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  117,
+                  115,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "cluster_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "_cluster_id",
+          "type": "u64"
+        },
+        {
+          "name": "farmer_actor_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_actor",
+      "docs": [
+        "Create a new actor (individual) in the supply chain.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority.",
+        "C-2: pin_hash parameter removed — PIN lives in Laravel only."
+      ],
+      "discriminator": [
+        46,
+        167,
+        99,
+        125,
+        120,
+        247,
+        217,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "actor",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "actor_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "user_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "actor_type",
+          "type": "u8"
+        },
+        {
+          "name": "roles",
+          "type": "string"
+        },
+        {
+          "name": "organization",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": "u8"
+        },
+        {
+          "name": "province",
+          "type": "string"
+        },
+        {
+          "name": "city",
+          "type": "string"
+        },
+        {
+          "name": "balance",
+          "type": "u64"
+        },
+        {
+          "name": "address",
+          "type": "string"
+        },
+        {
+          "name": "farm_id",
+          "type": "string"
+        },
+        {
+          "name": "farmer_id",
+          "type": "u64"
+        },
+        {
+          "name": "assigned_tps",
+          "type": "u64"
+        },
+        {
+          "name": "farmer_signature_key",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "create_cluster",
+      "docs": [
+        "Create a new farmer cluster.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        175,
+        229,
+        0,
+        118,
+        240,
+        195,
+        91,
+        130
+      ],
+      "accounts": [
+        {
+          "name": "cluster",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  108,
+                  117,
+                  115,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "cluster_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "cluster_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "province",
+          "type": "string"
+        },
+        {
+          "name": "city",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "create_organization",
+      "docs": [
+        "Create a new organization.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        60,
+        173,
+        177,
+        39,
+        122,
+        23,
+        68,
+        185
+      ],
+      "accounts": [
+        {
+          "name": "organization",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  103,
+                  97,
+                  110,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "org_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "org_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "org_type",
+          "type": "u8"
+        },
+        {
+          "name": "province",
+          "type": "string"
+        },
+        {
+          "name": "city",
+          "type": "string"
+        },
+        {
+          "name": "contact_person",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "deactivate_validator",
+      "docs": [
+        "Deactivate a validator.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        188,
+        227,
+        224,
+        187,
+        231,
+        52,
+        3,
+        147
+      ],
+      "accounts": [
+        {
+          "name": "validator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  108,
+                  105,
+                  100,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "validator_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_validator_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "delete_actor",
+      "docs": [
+        "Soft-delete (deactivate) an actor.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        203,
+        108,
+        48,
+        216,
+        162,
+        3,
+        108,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "actor",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "actor_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_actor_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "delete_organization",
+      "docs": [
+        "Soft-delete (deactivate) an organization.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        123,
+        180,
+        91,
+        183,
+        207,
+        195,
+        125,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "organization",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  103,
+                  97,
+                  110,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "org_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_org_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_bridge_config",
+      "docs": [
+        "Initialize the bridge authority config.",
+        "Call once at deployment before any other instruction.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "discriminator": [
+        255,
+        120,
+        94,
+        187,
+        104,
+        236,
+        19,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "bridge_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bridge_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "register_validator",
+      "docs": [
+        "Register a new validator.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        118,
+        98,
+        251,
+        58,
+        81,
+        30,
+        13,
+        240
+      ],
+      "accounts": [
+        {
+          "name": "validator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  108,
+                  105,
+                  100,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "validator_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "validator_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "assigned_province",
+          "type": "string"
+        },
+        {
+          "name": "assigned_city",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "update_actor",
+      "docs": [
+        "Update an existing actor.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        63,
+        85,
+        119,
+        180,
+        13,
+        73,
+        133,
+        57
+      ],
+      "accounts": [
+        {
+          "name": "actor",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  99,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "actor_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "organization",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": {
+            "option": "u8"
+          }
+        },
+        {
+          "name": "province",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "city",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "balance",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "address",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "assigned_tps",
+          "type": {
+            "option": "u64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_bridge_authority",
+      "docs": [
+        "Rotate the bridge authority to a new wallet.",
+        "Only the current bridge_authority may call this."
+      ],
+      "discriminator": [
+        126,
+        176,
+        226,
+        17,
+        50,
+        68,
+        117,
+        193
+      ],
+      "accounts": [
+        {
+          "name": "bridge_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "update_organization",
+      "docs": [
+        "Update an existing organization.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        42,
+        176,
+        73,
+        140,
+        85,
+        79,
+        50,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "organization",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  103,
+                  97,
+                  110,
+                  105,
+                  122,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "org_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_org_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "contact_person",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": {
+            "option": "u8"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_validator",
+      "docs": [
+        "Update an existing validator.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        105,
+        192,
+        4,
+        98,
+        236,
+        115,
+        108,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "validator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  108,
+                  105,
+                  100,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "validator_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_validator_id",
+          "type": "u64"
+        },
+        {
+          "name": "name",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "assigned_province",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "assigned_city",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": {
+            "option": "u8"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ActorAccount",
+      "discriminator": [
+        166,
+        194,
+        42,
+        108,
+        176,
+        251,
+        154,
+        163
+      ]
+    },
+    {
+      "name": "BridgeConfig",
+      "discriminator": [
+        40,
+        206,
+        51,
+        233,
+        246,
+        40,
+        178,
+        85
+      ]
+    },
+    {
+      "name": "ClusterAccount",
+      "discriminator": [
+        193,
+        139,
+        188,
+        225,
+        30,
+        76,
+        48,
+        23
+      ]
+    },
+    {
+      "name": "FarmerClusterLink",
+      "discriminator": [
+        166,
+        22,
+        238,
+        247,
+        5,
+        6,
+        192,
+        95
+      ]
+    },
+    {
+      "name": "OrganizationAccount",
+      "discriminator": [
+        188,
+        133,
+        114,
+        111,
+        191,
+        0,
+        19,
+        74
+      ]
+    },
+    {
+      "name": "ValidatorAccount",
+      "discriminator": [
+        32,
+        144,
+        229,
+        203,
+        9,
+        154,
+        158,
+        255
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not the bridge authority"
+    },
+    {
+      "code": 6001,
+      "name": "AlreadyInitialized",
+      "msg": "Bridge config has already been initialized"
+    }
+  ],
+  "types": [
+    {
+      "name": "ActorAccount",
+      "docs": [
+        "ActorAccount — individual supply chain participants (farmers, dryers, millers).",
+        "PDA seeds: [b\"actor\", authority, actor_id]",
+        "",
+        "C-2: pin_hash removed. All other fields unchanged from original."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "actor_id",
+            "type": "u64"
+          },
+          {
+            "name": "user_id",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "name_len",
+            "type": "u8"
+          },
+          {
+            "name": "actor_type",
+            "type": "u8"
+          },
+          {
+            "name": "roles",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "roles_len",
+            "type": "u8"
+          },
+          {
+            "name": "organization",
+            "type": {
+              "array": [
+                "u8",
+                20
+              ]
+            }
+          },
+          {
+            "name": "organization_len",
+            "type": "u8"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "province",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "province_len",
+            "type": "u8"
+          },
+          {
+            "name": "city",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "city_len",
+            "type": "u8"
+          },
+          {
+            "name": "balance",
+            "type": "u64"
+          },
+          {
+            "name": "address",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "address_len",
+            "type": "u8"
+          },
+          {
+            "name": "farm_id",
+            "type": {
+              "array": [
+                "u8",
+                36
+              ]
+            }
+          },
+          {
+            "name": "farm_id_len",
+            "type": "u8"
+          },
+          {
+            "name": "farmer_id",
+            "type": "u64"
+          },
+          {
+            "name": "assigned_tps",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "farmer_signature_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "farmer_signature_key_len",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BridgeConfig",
+      "docs": [
+        "Stores the single bridge wallet authorised to sign all",
+        "state-mutating instructions in this program.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "bridge_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "initialized_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClusterAccount",
+      "docs": [
+        "ClusterAccount — groups of farmers for collective operations.",
+        "PDA seeds: [b\"cluster\", authority, cluster_id]",
+        "Unchanged from original."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "cluster_id",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "name_len",
+            "type": "u8"
+          },
+          {
+            "name": "province",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "province_len",
+            "type": "u8"
+          },
+          {
+            "name": "city",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "city_len",
+            "type": "u8"
+          },
+          {
+            "name": "farmer_count",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FarmerClusterLink",
+      "docs": [
+        "FarmerClusterLink — joins a farmer to a cluster.",
+        "PDA seeds: [b\"farmer_cluster\", cluster_id, farmer_actor_id]",
+        "Unchanged from original."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "cluster_id",
+            "type": "u64"
+          },
+          {
+            "name": "farmer_actor_id",
+            "type": "u64"
+          },
+          {
+            "name": "joined_at",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OrganizationAccount",
+      "docs": [
+        "OrganizationAccount — companies (suppliers, warehouses, FCAs, dropoff points).",
+        "PDA seeds: [b\"organization\", authority, org_id]",
+        "Unchanged from original."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "org_id",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "name_len",
+            "type": "u8"
+          },
+          {
+            "name": "org_type",
+            "type": "u8"
+          },
+          {
+            "name": "province",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "province_len",
+            "type": "u8"
+          },
+          {
+            "name": "city",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "city_len",
+            "type": "u8"
+          },
+          {
+            "name": "contact_person",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "contact_person_len",
+            "type": "u8"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ValidatorAccount",
+      "docs": [
+        "ValidatorAccount — regional inspectors.",
+        "PDA seeds: [b\"validator\", authority, validator_id]",
+        "Unchanged from original."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "validator_id",
+            "type": "u64"
+          },
+          {
+            "name": "name",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "name_len",
+            "type": "u8"
+          },
+          {
+            "name": "assigned_province",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "assigned_province_len",
+            "type": "u8"
+          },
+          {
+            "name": "assigned_city",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "assigned_city_len",
+            "type": "u8"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

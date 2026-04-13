@@ -1,0 +1,1291 @@
+{
+  "address": "DbE2kBwg3qVkqfzTyxTp4joofy9NxMhSKKZi4rh1wwu3",
+  "metadata": {
+    "name": "buyback",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "DigiSaka buyback program – purchase agreements"
+  },
+  "instructions": [
+    {
+      "name": "close_buyback",
+      "docs": [
+        "Permanently close a buyback account and reclaim rent.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        98,
+        233,
+        163,
+        62,
+        120,
+        148,
+        53,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "confirm_payment",
+      "docs": [
+        "Confirm payment for a settled buyback.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        221,
+        23,
+        112,
+        126,
+        29,
+        23,
+        159,
+        223
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_buyback",
+      "docs": [
+        "Create a new buyback agreement.",
+        "PDA seeds: [b\"buyback\", authority, buyback_id]",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority.",
+        "C-3: farmer and provider PDAs are loaded from Core and validated."
+      ],
+      "discriminator": [
+        156,
+        161,
+        20,
+        48,
+        99,
+        25,
+        129,
+        159
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "farmer_authority"
+        },
+        {
+          "name": "farmer_actor",
+          "docs": [
+            "CoreActorAccount off the try_accounts stack frame."
+          ]
+        },
+        {
+          "name": "provider_authority"
+        },
+        {
+          "name": "provider_account"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "farmer_id",
+          "type": "u64"
+        },
+        {
+          "name": "rsbsa_number",
+          "type": "u64"
+        },
+        {
+          "name": "provider_id",
+          "type": "u64"
+        },
+        {
+          "name": "season_id",
+          "type": "u64"
+        },
+        {
+          "name": "farm_size_hectares",
+          "type": "u64"
+        },
+        {
+          "name": "pb_borrowed_price",
+          "type": "u64"
+        },
+        {
+          "name": "premium_per_kg",
+          "type": "u64"
+        },
+        {
+          "name": "input_details",
+          "type": "string"
+        },
+        {
+          "name": "expected_harvest_kg",
+          "type": "u64"
+        },
+        {
+          "name": "contract_pdf_key",
+          "type": "string"
+        },
+        {
+          "name": "farmer_signature_key",
+          "type": "string"
+        },
+        {
+          "name": "staff_signature_key",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "delete_buyback",
+      "docs": [
+        "Soft-delete (cancel) a buyback.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        10,
+        255,
+        91,
+        102,
+        245,
+        46,
+        66,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_bridge_config",
+      "docs": [
+        "Initialize the bridge authority config.",
+        "Must be called once by the deployer before any other instruction.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "discriminator": [
+        255,
+        120,
+        94,
+        187,
+        104,
+        236,
+        19,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "bridge_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bridge_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "mark_buyback_settled",
+      "docs": [
+        "Mark a to_settle or pay_later buyback as fully settled.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        236,
+        116,
+        215,
+        102,
+        239,
+        210,
+        234,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle_buyback",
+      "docs": [
+        "Settle a buyback agreement after harvest.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority.",
+        "D-3: The on-chain total is derived fully from stored fields and",
+        "actual_harvest_kg.  total_price_signed must match within",
+        "PRICE_TOLERANCE_CENTS (10 cents) or the instruction fails.",
+        "",
+        "Formula (all amounts in cents):",
+        "raw_harvest  = (actual_harvest_kg * pm_market_price) / 1000",
+        "premium      = (actual_harvest_kg * premium_per_kg)  / 1000",
+        "expected_net = (raw_harvest + premium) - pb_borrowed_price",
+        "",
+        "total_price_signed > 0 → provider owes farmer",
+        "total_price_signed < 0 → farmer owes provider"
+      ],
+      "discriminator": [
+        250,
+        32,
+        20,
+        144,
+        221,
+        187,
+        195,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "actual_harvest_kg",
+          "type": "u64"
+        },
+        {
+          "name": "pm_market_price",
+          "type": "u64"
+        },
+        {
+          "name": "check_number",
+          "type": "string"
+        },
+        {
+          "name": "check_date",
+          "type": "i64"
+        },
+        {
+          "name": "new_status",
+          "type": "u8"
+        },
+        {
+          "name": "target_payment_date",
+          "type": "i64"
+        },
+        {
+          "name": "total_price_signed",
+          "type": "i64"
+        },
+        {
+          "name": "contract_pdf_key",
+          "type": "string"
+        },
+        {
+          "name": "farmer_signature_key",
+          "type": "string"
+        },
+        {
+          "name": "staff_signature_key",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "update_bridge_authority",
+      "docs": [
+        "Transfer the bridge authority to a new wallet.",
+        "Only the current bridge_authority may call this."
+      ],
+      "discriminator": [
+        126,
+        176,
+        226,
+        17,
+        50,
+        68,
+        117,
+        193
+      ],
+      "accounts": [
+        {
+          "name": "bridge_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "update_in_season",
+      "docs": [
+        "Record in-season monitoring data (risk events, yield forecast, risk flag).",
+        "C-1: authority must equal bridge_config.bridge_authority.",
+        "M-4: inspection_count is now u16 — incremented with saturating_add."
+      ],
+      "discriminator": [
+        12,
+        11,
+        67,
+        36,
+        2,
+        189,
+        192,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "risk_event",
+          "type": "string"
+        },
+        {
+          "name": "forecasted_yield",
+          "type": "u64"
+        },
+        {
+          "name": "major_risk_flag",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "update_payment_schedule",
+      "docs": [
+        "Reschedule a pending payment date.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        34,
+        56,
+        134,
+        31,
+        4,
+        78,
+        125,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "target_payment_date",
+          "type": "i64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "BridgeConfig",
+      "discriminator": [
+        40,
+        206,
+        51,
+        233,
+        246,
+        40,
+        178,
+        85
+      ]
+    },
+    {
+      "name": "BuybackAccount",
+      "discriminator": [
+        64,
+        188,
+        134,
+        111,
+        248,
+        126,
+        33,
+        46
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not the bridge authority"
+    },
+    {
+      "code": 6001,
+      "name": "AlreadyInitialized",
+      "msg": "Bridge config has already been initialized"
+    },
+    {
+      "code": 6002,
+      "name": "BuybackNotActive",
+      "msg": "Buyback is not active"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidAmount",
+      "msg": "Invalid harvest amount — must be greater than 0"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidMarketPrice",
+      "msg": "Market price out of valid range (₱10–₱100/kg)"
+    },
+    {
+      "code": 6005,
+      "name": "PriceMismatch",
+      "msg": "Supplied total_price_signed does not match on-chain calculation (tolerance: 10 cents)"
+    },
+    {
+      "code": 6006,
+      "name": "PriceCalculationOverflow",
+      "msg": "Price calculation overflowed u64"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidStatusTransition",
+      "msg": "Invalid status transition — not allowed from current state"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidSettlementStatus",
+      "msg": "Settlement status does not match financial outcome"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidStatusForScheduleUpdate",
+      "msg": "Cannot update payment schedule for this status"
+    },
+    {
+      "code": 6010,
+      "name": "BuybackFinalized",
+      "msg": "Buyback is in a final state and cannot be modified"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidStatusValue",
+      "msg": "Invalid status value"
+    },
+    {
+      "code": 6012,
+      "name": "FarmerActorIdMismatch",
+      "msg": "Farmer Core account does not match farmer_id"
+    },
+    {
+      "code": 6013,
+      "name": "FarmerWrongActorType",
+      "msg": "Farmer Core account is not actor_type farmer"
+    },
+    {
+      "code": 6014,
+      "name": "FarmerNotActive",
+      "msg": "Farmer Core account is not active"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidProviderAccount",
+      "msg": "Provider account is not a valid Core organization or actor PDA"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidProviderOwner",
+      "msg": "Provider account is not owned by the Core program"
+    },
+    {
+      "code": 6017,
+      "name": "ProviderIdMismatch",
+      "msg": "Provider Core account id does not match provider_id"
+    },
+    {
+      "code": 6018,
+      "name": "ProviderNotActive",
+      "msg": "Provider Core account is not active"
+    }
+  ],
+  "types": [
+    {
+      "name": "BridgeConfig",
+      "docs": [
+        "Stores the single bridge wallet that is authorised to sign all",
+        "state-mutating instructions in this program.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "bridge_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "initialized_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BuybackAccount",
+      "docs": [
+        "Buyback agreement account.",
+        "PDA seeds: [b\"buyback\", authority, buyback_id]",
+        "",
+        "Changes vs original:",
+        "- inspection_count: u8  → u16   (M-4)",
+        "- risk_events: [u8;200] → [u8;500]  (M-4)",
+        "- risk_events_len: u8   → u16   (M-4, to index into 500-byte buffer)",
+        "- SPACE updated (+2 bytes inspection_count, +300 bytes risk_events,",
+        "+1 byte risk_events_len width)  = +303 bytes net"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "buyback_id",
+            "type": "u64"
+          },
+          {
+            "name": "farmer_id",
+            "type": "u64"
+          },
+          {
+            "name": "provider_id",
+            "type": "u64"
+          },
+          {
+            "name": "rsbsa_number",
+            "type": "u64"
+          },
+          {
+            "name": "season_id",
+            "type": "u64"
+          },
+          {
+            "name": "pb_borrowed_price",
+            "type": "u64"
+          },
+          {
+            "name": "premium_per_kg",
+            "type": "u64"
+          },
+          {
+            "name": "farm_size_hectares",
+            "type": "u64"
+          },
+          {
+            "name": "input_details",
+            "type": {
+              "array": [
+                "u8",
+                500
+              ]
+            }
+          },
+          {
+            "name": "input_details_len",
+            "type": "u16"
+          },
+          {
+            "name": "expected_harvest_kg",
+            "type": "u64"
+          },
+          {
+            "name": "agreement_date",
+            "type": "i64"
+          },
+          {
+            "name": "risk_events",
+            "type": {
+              "array": [
+                "u8",
+                500
+              ]
+            }
+          },
+          {
+            "name": "risk_events_len",
+            "type": "u16"
+          },
+          {
+            "name": "forecasted_yield",
+            "type": "u64"
+          },
+          {
+            "name": "last_inspection_date",
+            "type": "i64"
+          },
+          {
+            "name": "inspection_count",
+            "type": "u16"
+          },
+          {
+            "name": "major_risk_flag",
+            "type": "u8"
+          },
+          {
+            "name": "actual_harvest_kg",
+            "type": "u64"
+          },
+          {
+            "name": "pm_market_price",
+            "type": "u64"
+          },
+          {
+            "name": "pr_raw_harvest_price",
+            "type": "u64"
+          },
+          {
+            "name": "total_buyback_price",
+            "type": "u64"
+          },
+          {
+            "name": "settlement_date",
+            "type": "i64"
+          },
+          {
+            "name": "check_number",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "check_number_len",
+            "type": "u8"
+          },
+          {
+            "name": "check_date",
+            "type": "i64"
+          },
+          {
+            "name": "payment_confirmed",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "target_payment_date",
+            "type": "i64"
+          },
+          {
+            "name": "target_payment_amount",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "contract_pdf_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "contract_pdf_key_len",
+            "type": "u8"
+          },
+          {
+            "name": "farmer_signature_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "farmer_signature_key_len",
+            "type": "u8"
+          },
+          {
+            "name": "staff_signature_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "staff_signature_key_len",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
