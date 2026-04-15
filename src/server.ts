@@ -7,6 +7,8 @@ import express, {
 import dotenv from "dotenv";
 import apiRoutes from "./routes/index.js";
 import { checkProgramInitialization } from "./services/ProgramService.js";
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./config/swaggerConfig.js";
 
 dotenv.config();
 
@@ -73,6 +75,9 @@ app.get("/health", async (req: Request, res: Response) => {
 
 // All other routes
 app.use("/api/v1", apiRoutes);
+
+// Swagger Documentation
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // --- SERVER START ---
 app.listen(PORT, () => {

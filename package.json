@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "node --env-file=.env dist/server.js",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "keywords": [],
   "author": "",
@@ -18,13 +19,20 @@
     "@solana/web3.js": "^1.98.4",
     "bn.js": "^5.2.2",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",
     "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.5",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.10.1",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.9.3"
   }
 }

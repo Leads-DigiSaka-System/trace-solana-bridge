@@ -21,6 +21,50 @@ import {
 } from "../services/TracingService.js";
 
 // Drying Handlers
+/**
+ * @openapi
+ * /tracing/drying:
+ *   post:
+ *     summary: Submit a new drying record to Solana
+ *     tags: [Tracing]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               drying_id:
+ *                 type: string
+ *               batch_id:
+ *                 type: string
+ *               dryer_actor_id:
+ *                 type: string
+ *               initial_mc:
+ *                 type: number
+ *               final_mc:
+ *                 type: number
+ *               temperature:
+ *                 type: number
+ *               airflow:
+ *                 type: number
+ *               humidity:
+ *                 type: number
+ *               duration:
+ *                 type: number
+ *               price:
+ *                 type: number
+ *               initial_weight:
+ *                 type: number
+ *               final_weight:
+ *                 type: number
+ *     responses:
+ *       202:
+ *         description: Drying record received
+ */
 export const submitDrying = async (req: Request, res: Response) => {
     try {
         const dryingData = req.body;
@@ -109,6 +153,48 @@ export const closeDrying = async (req: Request, res: Response) => {
 };
 
 // Milling Handlers
+/**
+ * @openapi
+ * /tracing/milling:
+ *   post:
+ *     summary: Submit a new milling record to Solana
+ *     tags: [Tracing]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               milling_id:
+ *                 type: string
+ *               miller_id:
+ *                 type: string
+ *               batch_id:
+ *                 type: string
+ *               milling_type:
+ *                 type: string
+ *               quality:
+ *                 type: string
+ *               total_weight_kg:
+ *                 type: number
+ *               total_weight_processed_kg:
+ *                 type: number
+ *               recovery:
+ *                 type: number
+ *               moisture:
+ *                 type: number
+ *               price:
+ *                 type: number
+ *               actual_price:
+ *                 type: number
+ *     responses:
+ *       202:
+ *         description: Milling record received
+ */
 export const submitMilling = async (req: Request, res: Response) => {
     try {
         const txId = await submitMillingToSolana(req.body);
@@ -202,6 +288,36 @@ export const closeMilling = async (req: Request, res: Response) => {
 };
 
 // Season Handlers
+/**
+ * @openapi
+ * /tracing/season:
+ *   post:
+ *     summary: Submit a new production season to Solana
+ *     tags: [Tracing]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               season_id:
+ *                 type: string
+ *               farmer_id:
+ *                 type: string
+ *               crop_year:
+ *                 type: string
+ *               season:
+ *                 type: string
+ *               variety:
+ *                 type: string
+ *     responses:
+ *       202:
+ *         description: Season record received
+ */
 export const submitSeason = async (req: Request, res: Response) => {
     try {
         const txId = await submitSeasonToSolana(req.body);

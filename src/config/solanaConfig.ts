@@ -87,4 +87,14 @@ export const [bridgeConfigPDA] = PublicKey.findProgramAddressSync(
     CORE_PROGRAM_ID,
 );
 
+export const [buybackBridgeConfigPDA] = PublicKey.findProgramAddressSync(
+    [Buffer.from("bridge_config")],
+    BUYBACK_PROGRAM_ID,
+);
+
+export const [distributionBridgeConfigPDA] = PublicKey.findProgramAddressSync(
+    [Buffer.from("bridge_config")],
+    DISTRIBUTION_PROGRAM_ID,
+);
+
 console.log("Modular programs initialized.");

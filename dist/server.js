@@ -2,6 +2,8 @@ import express, {} from "express";
 import dotenv from "dotenv";
 import apiRoutes from "./routes/index.js";
 import { checkProgramInitialization } from "./services/ProgramService.js";
+import swaggerUi from "swagger-ui-express";
+import swaggerSpec from "./config/swaggerConfig.js";
 dotenv.config();
 const app = express();
 // Capture raw body for HMAC verification before parsing JSON
@@ -59,6 +61,8 @@ app.get("/health", async (req, res) => {
 });
 // All other routes
 app.use("/api/v1", apiRoutes);
+// Swagger Documentation
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // --- SERVER START ---
 app.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
