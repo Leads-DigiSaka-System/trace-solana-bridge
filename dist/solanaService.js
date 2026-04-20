@@ -2457,6 +2457,19 @@ export const submitBuybackToSolana = async (buybackData) => {
             console.error("Available methods:", Object.keys(program.methods));
             throw new Error("createBuyback method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
         }
+        // Pre-flight check: if a stale account exists at this PDA, force-close it first
+        const existingAccount = await connection.getAccountInfo(buybackPDA);
+        if (existingAccount) {
+            console.warn(`Pre-flight: Account already exists at PDA for buyback_id ${buybackIdBN.toString()}. Attempting force-close...`);
+            try {
+                await forceCloseBuybackOnSolana({ buyback_id });
+                console.log("Pre-flight: Stale account force-closed successfully. Proceeding with create.");
+            }
+            catch (forceCloseErr) {
+                console.error("Pre-flight: Force-close failed:", forceCloseErr.message);
+                throw new Error(`Cannot create buyback: PDA already in use and force-close failed. ${forceCloseErr.message}`);
+            }
+        }
         console.log("Calling createBuyback with buyback_id:", buybackIdBN.toString());
         console.log("Buyback payload:", {
             buyback_id: buybackIdBN.toString(),
@@ -2879,6 +2892,40 @@ export const closeBuybackOnSolana = async (buybackData) => {
     catch (err) {
         console.error("Anchor Program closeBuyback Failed:", err);
         throw new Error(`Failed to execute closeBuyback: ${err.message || err.toString()}`);
+    }
+};
+/**
+ * Force-close a buyback account without deserializing.
+ * Bypasses schema validation — works on accounts with outdated layouts.
+ */
+export const forceCloseBuybackOnSolana = async (buybackData) => {
+    const { buyback_id } = buybackData;
+    const buybackIdBN = validateAndConvertBuybackId(buyback_id, "force-close");
+    const [buybackPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("buyback"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(buybackIdBN.toArray("le", 8)),
+    ], PROGRAM_ID);
+    try {
+        if (!program.methods.forceCloseBuyback) {
+            throw new Error("forceCloseBuyback method not found in program. Ensure the program is redeployed with the force_close_buyback instruction.");
+        }
+        console.log("Calling forceCloseBuyback with buyback_id:", buybackIdBN.toString());
+        const txSig = await program.methods
+            .forceCloseBuyback(buybackIdBN)
+            .accounts({
+            buyback: buybackPDA,
+            authority: wallet.publicKey,
+            systemProgram: SystemProgram.programId,
+        })
+            .signers([feePayer])
+            .rpc();
+        console.log("Buyback Account Force-Closed on Solana:", txSig);
+        return txSig;
+    }
+    catch (err) {
+        console.error("Anchor Program forceCloseBuyback Failed:", err);
+        throw new Error(`Failed to execute forceCloseBuyback: ${err.message || err.toString()}`);
     }
 };
 //# sourceMappingURL=solanaService.js.map

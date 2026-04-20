@@ -272,4 +272,9 @@ export declare const deleteBuybackOnSolana: (buybackData: any) => Promise<string
  * Close a buyback account (permanently remove, return rent)
  */
 export declare const closeBuybackOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Force-close a buyback account without deserializing.
+ * Bypasses schema validation — works on accounts with outdated layouts.
+ */
+export declare const forceCloseBuybackOnSolana: (buybackData: any) => Promise<string>;
 //# sourceMappingURL=solanaService.d.ts.map

@@ -1640,6 +1640,49 @@
       ]
     },
     {
+      "name": "force_close_buyback",
+      "docs": [
+        "Force-close a buyback account without deserializing its data.",
+        "Use this to clean up accounts with outdated schemas that cannot",
+        "be deserialized by normal instructions."
+      ],
+      "discriminator": [
+        73,
+        8,
+        124,
+        204,
+        203,
+        66,
+        38,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "docs": [
+            "program ownership and PDA seeds manually. This allows closing",
+            "accounts that cannot be deserialized due to schema changes."
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "initialize_program",
       "docs": [
         "Initialize the program (one-time setup)",
@@ -2728,6 +2771,11 @@
       "code": 6013,
       "name": "InvalidStatusValue",
       "msg": "Invalid status value"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidPDA",
+      "msg": "Invalid PDA: account does not match expected seeds or is not owned by this program"
     }
   ],
   "types": [
@@ -2974,6 +3022,10 @@
       "type": {
         "kind": "struct",
         "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
           {
             "name": "buyback_id",
             "type": "u64"

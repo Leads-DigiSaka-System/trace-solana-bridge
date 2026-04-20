@@ -48,6 +48,7 @@ import {
     confirmBuybackPaymentOnSolana,
     deleteBuybackOnSolana,
     closeBuybackOnSolana,
+    forceCloseBuybackOnSolana,
     updatePaymentScheduleOnSolana,
     markBuybackSettledOnSolana,
     // Admin functions
@@ -1167,6 +1168,24 @@ app.post('/api/v1/close-buyback', verifyHmac, async (req: Request, res: Response
         });
     } catch (error: any) {
         console.error('Solana Close Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Force-close buyback account (bypasses deserialization for schema-mismatched accounts)
+app.post('/api/v1/force-close-buyback', verifyHmac, async (req: Request, res: Response) => {
+    try {
+        const buybackData = req.body;
+        
+        const txId = await forceCloseBuybackOnSolana(buybackData);
+        
+        res.status(200).json({
+            message: 'Buyback account force-closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain (bypassed deserialization).'
+        });
+    } catch (error: any) {
+        console.error('Solana Force-Close Buyback Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });

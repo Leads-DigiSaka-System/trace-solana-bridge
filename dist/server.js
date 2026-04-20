@@ -12,7 +12,7 @@ submitSeasonToSolana, checkSeasonExistsOnSolana, getSeasonFromSolana, updateSeas
 // Transaction functions
 submitTransactionToSolana, checkTransactionExistsOnSolana, 
 // Buyback functions
-submitBuybackToSolana, checkBuybackExistsOnSolana, getBuybackFromSolana, updateInSeasonOnSolana, settleBuybackOnSolana, confirmBuybackPaymentOnSolana, deleteBuybackOnSolana, closeBuybackOnSolana, updatePaymentScheduleOnSolana, markBuybackSettledOnSolana, 
+submitBuybackToSolana, checkBuybackExistsOnSolana, getBuybackFromSolana, updateInSeasonOnSolana, settleBuybackOnSolana, confirmBuybackPaymentOnSolana, deleteBuybackOnSolana, closeBuybackOnSolana, forceCloseBuybackOnSolana, updatePaymentScheduleOnSolana, markBuybackSettledOnSolana, 
 // Admin functions
 initializeProgramOnSolana, getProgramConfig, getFeePayerPublicKey, closeConfigOnSolana } from './solanaService.js';
 import { verifyHmac, logRequest } from './middleware/hmacAuth.js';
@@ -999,6 +999,22 @@ app.post('/api/v1/close-buyback', verifyHmac, async (req, res) => {
     }
     catch (error) {
         console.error('Solana Close Buyback Error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// Force-close buyback account (bypasses deserialization for schema-mismatched accounts)
+app.post('/api/v1/force-close-buyback', verifyHmac, async (req, res) => {
+    try {
+        const buybackData = req.body;
+        const txId = await forceCloseBuybackOnSolana(buybackData);
+        res.status(200).json({
+            message: 'Buyback account force-closed successfully. Rent returned to authority.',
+            transactionId: txId,
+            warning: 'Account has been permanently deleted from Solana blockchain (bypassed deserialization).'
+        });
+    }
+    catch (error) {
+        console.error('Solana Force-Close Buyback Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
