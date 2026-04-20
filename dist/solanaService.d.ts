@@ -1,3 +1,10 @@
+import * as anchor from "@coral-xyz/anchor";
+export declare const coreProgram: anchor.Program<anchor.Idl>;
+export declare const buybackProgram: anchor.Program<anchor.Idl>;
+export declare const distributionProgram: anchor.Program<anchor.Idl>;
+export declare const tracingProgram: anchor.Program<anchor.Idl>;
+export declare const carbonProgram: anchor.Program<anchor.Idl>;
+export declare const bridgeConfigPDA: anchor.web3.PublicKey;
 export declare const checkProgramInitialization: () => Promise<boolean>;
 export declare const submitActorToSolana: (actorData: any) => Promise<string>;
 /**

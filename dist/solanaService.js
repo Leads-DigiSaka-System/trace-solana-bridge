@@ -1,11 +1,15 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Connection, Keypair, PublicKey, SystemProgram, } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 import { Buffer } from "buffer";
 import BN from "bn.js";
 import { createHash } from "crypto";
-// ESM JSON import
-import idlJson from "./idl/digisaka_supply_chain.json" with { type: "json" };
+// ESM JSON imports for modular programs
+import coreIdl from "./idl/core.json" with { type: "json" };
+import buybackIdl from "./idl/buyback.json" with { type: "json" };
+import distributionIdl from "./idl/distribution.json" with { type: "json" };
+import tracingIdl from "./idl/tracing.json" with { type: "json" };
+import carbonIdl from "./idl/carbon.json" with { type: "json" };
 /**
  * Convert a hex string to a Uint8Array (32 bytes for SHA-256)
  * If input is not a valid 64-char hex string, generate SHA-256 of input
@@ -20,24 +24,33 @@ function hexToBytes(hex) {
         return bytes;
     }
     // Otherwise, hash the input to get a consistent 32-byte value
-    const hash = createHash('sha256').update(hex || '000000').digest();
+    const hash = createHash("sha256")
+        .update(hex || "000000")
+        .digest();
     return Array.from(hash);
 }
 /**
  * Generate SHA-256 hash of a PIN and return as 32-byte array
  */
 function hashPinToBytes(pin) {
-    const hash = createHash('sha256').update(pin || '000000').digest();
+    const hash = createHash("sha256")
+        .update(pin || "000000")
+        .digest();
     return Array.from(hash);
 }
 dotenv.config();
-if (!process.env.SOLANA_PROGRAM_ID) {
-    throw new Error("CRITICAL: Missing SOLANA_PROGRAM_ID in .env");
+// Ensure all modular program IDs are present
+const CORE_PROGRAM_ID = new PublicKey(process.env.SOLANA_CORE_PROGRAM_ID || "");
+const BUYBACK_PROGRAM_ID = new PublicKey(process.env.SOLANA_BUYBACK_PROGRAM_ID || "");
+const DISTRIBUTION_PROGRAM_ID = new PublicKey(process.env.SOLANA_DISTRIBUTION_PROGRAM_ID || "");
+const TRACING_PROGRAM_ID = new PublicKey(process.env.SOLANA_TRACING_PROGRAM_ID || "");
+const CARBON_PROGRAM_ID = new PublicKey(process.env.SOLANA_CARBON_PROGRAM_ID || "");
+if (!process.env.SOLANA_CORE_PROGRAM_ID) {
+    throw new Error("CRITICAL: Missing SOLANA_CORE_PROGRAM_ID in .env");
 }
 if (!process.env.SOLANA_FEE_PAYER_SECRET_KEY) {
     throw new Error("CRITICAL: Missing SOLANA_FEE_PAYER_SECRET_KEY in .env");
 }
-const PROGRAM_ID = new PublicKey(process.env.SOLANA_PROGRAM_ID);
 /**
  * Validate and convert actor_id to BN
  *
@@ -69,7 +82,7 @@ function validateAndConvertActorId(actor_id, operationName = "operation") {
         throw new Error(`Invalid actor_id format: ${actor_id}. Must be a valid u64 (number or numeric string)`);
     }
     // Validate actor_id is within u64 range (0 to 2^64-1)
-    const MAX_U64 = new BN('18446744073709551615'); // 2^64 - 1
+    const MAX_U64 = new BN("18446744073709551615"); // 2^64 - 1
     if (actorIdBN.lt(new BN(0)) || actorIdBN.gt(MAX_U64)) {
         throw new Error(`actor_id out of range: ${actor_id}. Must be between 0 and 18446744073709551615`);
     }
@@ -96,44 +109,24 @@ const provider = new anchor.AnchorProvider(connection, wallet, {
     preflightCommitment: "confirmed",
 });
 anchor.setProvider(provider);
-// Normalize JSON import
-const idlContent = idlJson;
-idlContent.address = PROGRAM_ID.toBase58();
-// Try to fetch IDL from on-chain first, fallback to local IDL
-let program;
-try {
-    console.log("Attempting to fetch IDL from on-chain program...");
-    const onChainIdl = await anchor.Program.fetchIdl(PROGRAM_ID, provider);
-    if (onChainIdl) {
-        console.log("Using on-chain IDL");
-        program = new anchor.Program(onChainIdl, provider);
-    }
-    else {
-        console.log("On-chain IDL not found, using local IDL");
-        program = new anchor.Program(idlContent, provider);
-    }
-}
-catch (error) {
-    console.warn("Failed to fetch on-chain IDL, using local IDL:", error);
-    // Initialize program with new Anchor 0.30+ constructor (idl, provider)
-    // The program ID is read from idl.address
-    program = new anchor.Program(idlContent, provider);
-}
-// Quick method check
-if (!program.methods) {
-    throw new Error("CRITICAL: Anchor methods failed to load. IDL mismatch?");
-}
-// Log available methods for debugging
-console.log("Program initialized. Available methods:", Object.keys(program.methods || {}));
+// Initialize all modular programs
+export const coreProgram = new anchor.Program(coreIdl, provider);
+export const buybackProgram = new anchor.Program(buybackIdl, provider);
+export const distributionProgram = new anchor.Program(distributionIdl, provider);
+export const tracingProgram = new anchor.Program(tracingIdl, provider);
+export const carbonProgram = new anchor.Program(carbonIdl, provider);
+// Global PDA for bridge_config (owned by coreProgram)
+export const [bridgeConfigPDA] = PublicKey.findProgramAddressSync([Buffer.from("bridge_config")], CORE_PROGRAM_ID);
+console.log("Modular programs initialized.");
 export const checkProgramInitialization = async () => {
     try {
-        const acc = await connection.getAccountInfo(PROGRAM_ID);
+        const acc = await connection.getAccountInfo(CORE_PROGRAM_ID);
         if (acc === null) {
-            console.error("Program account not found:", PROGRAM_ID.toBase58());
+            console.error("Core program account not found:", CORE_PROGRAM_ID.toBase58());
             return false;
         }
         if (!acc.executable) {
-            console.error("Program account exists but is not executable:", PROGRAM_ID.toBase58());
+            console.error("Core program account exists but is not executable:", CORE_PROGRAM_ID.toBase58());
             return false;
         }
         return true;
@@ -146,9 +139,7 @@ export const checkProgramInitialization = async () => {
 export const submitActorToSolana = async (actorData) => {
     const { actor_id, user_id, name, roles, // JSON string or array of roles
     organization, // Optional organization (BLO, Buyback, COOP)
-    is_active, province, city, balance, pin, address, farm_id, farmer_id, assigned_tps, 
-    // NEW: optional farmer signature key from Laravel
-    farmer_signature_key, } = actorData;
+    is_active, province, city, balance, address, farm_id, farmer_id, assigned_tps, farmer_signature_key, } = actorData;
     // ============================================
     // VALIDATE AND CONVERT actor_id
     // ============================================
@@ -157,11 +148,11 @@ export const submitActorToSolana = async (actorData) => {
     // PARSE ROLES
     // ============================================
     let rolesString;
-    if (typeof roles === 'string') {
+    if (typeof roles === "string") {
         try {
             // Try to parse as JSON first
             const parsed = JSON.parse(roles);
-            rolesString = Array.isArray(parsed) ? parsed.join(',') : roles;
+            rolesString = Array.isArray(parsed) ? parsed.join(",") : roles;
         }
         catch {
             // If not JSON, assume it's already comma-separated
@@ -169,10 +160,10 @@ export const submitActorToSolana = async (actorData) => {
         }
     }
     else if (Array.isArray(roles)) {
-        rolesString = roles.join(',');
+        rolesString = roles.join(",");
     }
     else {
-        rolesString = '';
+        rolesString = "";
     }
     // actor_type kept as 0 for backward compatibility (roles is the new way)
     const actorTypeU8 = 0;
@@ -194,7 +185,7 @@ export const submitActorToSolana = async (actorData) => {
             Buffer.from("actor"),
             feePayer.publicKey.toBuffer(),
             Buffer.from(actorIdBN.toArray("le", 8)),
-        ], PROGRAM_ID);
+        ], CORE_PROGRAM_ID);
         console.log("PDA Derivation:", {
             actor_id: actorIdBN.toString(),
             pda: actorPDA.toBase58(),
@@ -209,7 +200,7 @@ export const submitActorToSolana = async (actorData) => {
         }
     }
     catch (pdaErr) {
-        if (pdaErr.message?.includes('already exists')) {
+        if (pdaErr.message?.includes("already exists")) {
             throw pdaErr; // Re-throw account exists errors
         }
         throw new Error(`Failed to derive PDA for actor_id ${actorIdBN.toString()}: ${pdaErr.message}`);
@@ -219,9 +210,10 @@ export const submitActorToSolana = async (actorData) => {
     // ============================================
     try {
         // Verify the method exists
-        if (!program.methods.createActor) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("createActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!coreProgram.methods.createActor) {
+            console.error("Available methods:", Object.keys(coreProgram.methods));
+            throw new Error("createActor method not found in program. Available methods: " +
+                Object.keys(coreProgram.methods).join(", "));
         }
         console.log("Calling createActor with data:", {
             actor_id: actorIdBN.toString(),
@@ -234,27 +226,16 @@ export const submitActorToSolana = async (actorData) => {
             province,
             city,
             balance: balanceInSmallestUnit,
-            pin,
             address,
             farm_id,
             farmer_id,
             assigned_tps,
-            farmer_signature_key,
         });
-        // Convert PIN to SHA-256 hash bytes (32 bytes)
-        // If 'pin' is already a hex hash from Laravel, convert it
-        // If it's a plaintext PIN, hash it first (fallback)
-        const pinHashBytes = hexToBytes(pin || '');
-        const txSig = await program.methods
-            .createActor(actorIdBN, // Use validated BN
-        new BN(String(user_id), 10), // Convert to string first to prevent precision loss
-        name || "", actorTypeU8, rolesString || "", organization || null, isActiveU8, province || "", city || "", new BN(String(balanceInSmallestUnit), 10), // Convert to string first
-        pinHashBytes, // SHA-256 hash as 32-byte array
-        address || "", farm_id || "", new BN(String(farmer_id), 10), // Convert to string first
-        new BN(String(assigned_tps), 10), // Convert to string first
-        farmer_signature_key || "")
+        const txSig = await coreProgram.methods
+            .createActor(actorIdBN, new BN(String(user_id), 10), name || "", actorTypeU8, rolesString || "", organization || null, isActiveU8, province || "", city || "", new BN(String(balanceInSmallestUnit), 10), address || "", farm_id || "", new BN(String(farmer_id), 10), new BN(String(assigned_tps), 10), farmer_signature_key || "")
             .accounts({
             actor: actorPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -269,10 +250,11 @@ export const submitActorToSolana = async (actorData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         // Check for specific Anchor errors
-        if (err.message?.includes('assertion') || err.message?.includes('Assertion')) {
+        if (err.message?.includes("assertion") ||
+            err.message?.includes("Assertion")) {
             console.error("PDA Derivation Debug:", {
                 actor_id: actor_id,
                 actor_id_type: typeof actor_id,
@@ -309,7 +291,7 @@ export const checkActorExistsOnSolana = async (actorId) => {
             Buffer.from("actor"),
             feePayer.publicKey.toBuffer(),
             Buffer.from(actorIdBN.toArray("le", 8)),
-        ], PROGRAM_ID);
+        ], CORE_PROGRAM_ID);
         // Check if account exists
         const accountInfo = await connection.getAccountInfo(actorPDA);
         if (accountInfo === null) {
@@ -317,7 +299,7 @@ export const checkActorExistsOnSolana = async (actorId) => {
             return false;
         }
         // Verify it's owned by our program
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(CORE_PROGRAM_ID)) {
             console.warn(`Actor ${actorIdBN.toString()} account exists but is not owned by our program`);
             return false;
         }
@@ -343,29 +325,29 @@ export const getActorFromSolana = async (actorId) => {
             Buffer.from("actor"),
             feePayer.publicKey.toBuffer(),
             Buffer.from(actorIdBN.toArray("le", 8)),
-        ], PROGRAM_ID);
+        ], CORE_PROGRAM_ID);
         // Try to fetch the actor account
         // Anchor converts PascalCase struct names to camelCase: ActorAccount -> actorAccount
         // Field names are also converted: actor_id -> actorId, name_len -> nameLen
         try {
-            const actorAccount = await program.account.actorAccount.fetch(actorPDA);
+            const actorAccount = await coreProgram.account.actorAccount.fetch(actorPDA);
             return {
                 actor_id: actorAccount.actorId.toString(), // Use toString() to prevent precision loss
                 user_id: actorAccount.userId.toString(), // Use toString() to prevent precision loss
-                name: Buffer.from(actorAccount.name.slice(0, actorAccount.nameLen)).toString('utf8'),
+                name: Buffer.from(actorAccount.name.slice(0, actorAccount.nameLen)).toString("utf8"),
                 actor_type: actorAccount.actorType,
-                roles: Buffer.from(actorAccount.roles.slice(0, actorAccount.rolesLen)).toString('utf8'),
+                roles: Buffer.from(actorAccount.roles.slice(0, actorAccount.rolesLen)).toString("utf8"),
                 organization: actorAccount.organizationLen > 0
-                    ? Buffer.from(actorAccount.organization.slice(0, actorAccount.organizationLen)).toString('utf8')
+                    ? Buffer.from(actorAccount.organization.slice(0, actorAccount.organizationLen)).toString("utf8")
                     : null,
                 is_active: actorAccount.isActive === 1,
-                province: Buffer.from(actorAccount.province.slice(0, actorAccount.provinceLen)).toString('utf8'),
-                city: Buffer.from(actorAccount.city.slice(0, actorAccount.cityLen)).toString('utf8'),
+                province: Buffer.from(actorAccount.province.slice(0, actorAccount.provinceLen)).toString("utf8"),
+                city: Buffer.from(actorAccount.city.slice(0, actorAccount.cityLen)).toString("utf8"),
                 balance: actorAccount.balance.toString(), // Use toString() to prevent precision loss
                 // PIN hash stored as 32-byte array, convert to hex string
-                pin_hash: Buffer.from(actorAccount.pinHash).toString('hex'),
-                address: Buffer.from(actorAccount.address.slice(0, actorAccount.addressLen)).toString('utf8'),
-                farm_id: Buffer.from(actorAccount.farmId.slice(0, actorAccount.farmIdLen)).toString('utf8'),
+                pin_hash: Buffer.from(actorAccount.pinHash).toString("hex"),
+                address: Buffer.from(actorAccount.address.slice(0, actorAccount.addressLen)).toString("utf8"),
+                farm_id: Buffer.from(actorAccount.farmId.slice(0, actorAccount.farmIdLen)).toString("utf8"),
                 farmer_id: actorAccount.farmerId.toString(), // Use toString() to prevent precision loss
                 assigned_tps: actorAccount.assignedTps.toString(), // Use toString() to prevent precision loss
                 timestamp: actorAccount.timestamp.toString(), // Use toString() to prevent precision loss
@@ -395,11 +377,11 @@ export const updateActorOnSolana = async (actorData) => {
     // Parse roles - if it's a JSON string, parse it; if it's already an array, use it
     let rolesString = null;
     if (roles !== undefined && roles !== null) {
-        if (typeof roles === 'string') {
+        if (typeof roles === "string") {
             try {
                 // Try to parse as JSON first
                 const parsed = JSON.parse(roles);
-                rolesString = Array.isArray(parsed) ? parsed.join(',') : roles;
+                rolesString = Array.isArray(parsed) ? parsed.join(",") : roles;
             }
             catch {
                 // If not JSON, assume it's already comma-separated
@@ -407,7 +389,7 @@ export const updateActorOnSolana = async (actorData) => {
             }
         }
         else if (Array.isArray(roles)) {
-            rolesString = roles.join(',');
+            rolesString = roles.join(",");
         }
     }
     // Convert is_active boolean to u8 if provided
@@ -434,16 +416,17 @@ export const updateActorOnSolana = async (actorData) => {
         Buffer.from("actor"),
         feePayer.publicKey.toBuffer(),
         Buffer.from(actorIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+    ], CORE_PROGRAM_ID);
     try {
         // Verify the method exists
-        if (!program.methods.updateActor) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("updateActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!coreProgram.methods.updateActor) {
+            console.error("Available methods:", Object.keys(coreProgram.methods));
+            throw new Error("updateActor method not found in program. Available methods: " +
+                Object.keys(coreProgram.methods).join(", "));
         }
         // Log the method signature for debugging
-        console.log("updateActor method found. Program ID:", PROGRAM_ID.toBase58());
-        console.log("Program IDL address:", program.idl.address);
+        console.log("updateActor method found. Program ID:", CORE_PROGRAM_ID.toBase58());
+        console.log("Program IDL address:", coreProgram.idl.address);
         // First verify actor exists - CRITICAL: Do not create, only update existing actors
         const accountInfo = await connection.getAccountInfo(actorPDA);
         if (accountInfo === null) {
@@ -451,7 +434,7 @@ export const updateActorOnSolana = async (actorData) => {
             throw new Error(`Actor ${actor_id} does not exist on Solana. Cannot update non-existent actor. Use create_actor instruction instead.`);
         }
         // Verify it's owned by our program
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(CORE_PROGRAM_ID)) {
             console.error(`Actor ${actor_id} account exists but is not owned by our program`);
             throw new Error(`Actor ${actor_id} account exists but is not owned by the correct program.`);
         }
@@ -460,13 +443,17 @@ export const updateActorOnSolana = async (actorData) => {
             actorIdBN, // _actor_id: u64 (required, use validated BN)
             name !== undefined ? name : null, // name: Option<String>
             rolesString !== null ? rolesString : null, // roles: Option<String>
-            organization !== undefined && organization !== null ? organization : null, // organization: Option<String>
+            organization !== undefined && organization !== null
+                ? organization
+                : null, // organization: Option<String>
             isActiveU8 !== null ? isActiveU8 : null, // is_active: Option<u8>
             province !== undefined ? province : null, // province: Option<String>
             city !== undefined ? city : null, // city: Option<String>
             balanceInSmallestUnit !== null ? balanceInSmallestUnit : null, // balance: Option<u64>
             address !== undefined ? address : null, // address: Option<String>
-            assigned_tps !== undefined ? new BN(String(assigned_tps), 10) : null, // assigned_tps: Option<u64> (convert to string first)
+            assigned_tps !== undefined
+                ? new BN(String(assigned_tps), 10)
+                : null, // assigned_tps: Option<u64> (convert to string first)
         ];
         console.log("Calling updateActor with parameters:", {
             actor_id: params[0].toString(),
@@ -476,17 +463,26 @@ export const updateActorOnSolana = async (actorData) => {
             is_active: params[4],
             province: params[5],
             city: params[6],
-            balance: params[7] ? (params[7] instanceof BN ? params[7].toString() : params[7]) : null,
+            balance: params[7]
+                ? params[7] instanceof BN
+                    ? params[7].toString()
+                    : params[7]
+                : null,
             address: params[8],
-            assigned_tps: params[9] ? (params[9] instanceof BN ? params[9].toString() : params[9]) : null,
+            assigned_tps: params[9]
+                ? params[9] instanceof BN
+                    ? params[9].toString()
+                    : params[9]
+                : null,
         });
         // Build the method call with optional parameters
         // Anchor's Option<T> in Rust maps to null in TypeScript
         // actor_id must be the first parameter for Anchor to derive the PDA correctly
-        const methodBuilder = program.methods.updateActor(...params);
+        const methodBuilder = coreProgram.methods.updateActor(...params);
         const txSig = await methodBuilder
             .accounts({
             actor: actorPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
         })
             .signers([feePayer])
@@ -500,7 +496,7 @@ export const updateActorOnSolana = async (actorData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor update instruction: ${err.message || err.toString()}`);
     }
@@ -516,14 +512,15 @@ export const deleteActorOnSolana = async (actorData) => {
         Buffer.from("actor"),
         feePayer.publicKey.toBuffer(),
         Buffer.from(actorIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+    ], CORE_PROGRAM_ID);
     try {
         // Verify the method exists
-        if (!program.methods.deleteActor) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("deleteActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!coreProgram.methods.deleteActor) {
+            console.error("Available methods:", Object.keys(coreProgram.methods));
+            throw new Error("deleteActor method not found in program. Available methods: " +
+                Object.keys(coreProgram.methods).join(", "));
         }
-        console.log("deleteActor method found. Program ID:", PROGRAM_ID.toBase58());
+        console.log("deleteActor method found. Program ID:", CORE_PROGRAM_ID.toBase58());
         // Verify actor exists before deletion
         const accountInfo = await connection.getAccountInfo(actorPDA);
         if (accountInfo === null) {
@@ -531,13 +528,13 @@ export const deleteActorOnSolana = async (actorData) => {
             throw new Error(`Actor ${actorIdBN.toString()} does not exist on Solana. Cannot delete non-existent actor.`);
         }
         // Verify it's owned by our program
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(CORE_PROGRAM_ID)) {
             console.error(`Actor ${actorIdBN.toString()} account exists but is not owned by our program`);
             throw new Error(`Actor ${actorIdBN.toString()} account exists but is not owned by the correct program.`);
         }
         console.log("Calling deleteActor with actor_id:", actorIdBN.toString());
         // Call delete_actor instruction (only requires actor_id for PDA derivation)
-        const txSig = await program.methods
+        const txSig = await coreProgram.methods
             .deleteActor(actorIdBN)
             .accounts({
             actor: actorPDA,
@@ -554,7 +551,7 @@ export const deleteActorOnSolana = async (actorData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor delete instruction: ${err.message || err.toString()}`);
     }
@@ -576,14 +573,15 @@ export const closeActorOnSolana = async (actorData) => {
         Buffer.from("actor"),
         feePayer.publicKey.toBuffer(),
         Buffer.from(actorIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+    ], CORE_PROGRAM_ID);
     try {
         // Verify the method exists
-        if (!program.methods.closeActor) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("closeActor method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!coreProgram.methods.closeActor) {
+            console.error("Available methods:", Object.keys(coreProgram.methods));
+            throw new Error("closeActor method not found in program. Available methods: " +
+                Object.keys(coreProgram.methods).join(", "));
         }
-        console.log("closeActor method found. Program ID:", PROGRAM_ID.toBase58());
+        console.log("closeActor method found. Program ID:", CORE_PROGRAM_ID.toBase58());
         // Verify actor exists before closing
         const accountInfo = await connection.getAccountInfo(actorPDA);
         if (accountInfo === null) {
@@ -591,14 +589,14 @@ export const closeActorOnSolana = async (actorData) => {
             throw new Error(`Actor ${actorIdBN.toString()} does not exist on Solana. Cannot close non-existent actor.`);
         }
         // Verify it's owned by our program
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(CORE_PROGRAM_ID)) {
             console.error(`Actor ${actorIdBN.toString()} account exists but is not owned by our program`);
             throw new Error(`Actor ${actorIdBN.toString()} account exists but is not owned by the correct program.`);
         }
         console.log("Calling closeActor with actor_id:", actorIdBN.toString());
         console.log("WARNING: This will permanently delete the account and return rent");
         // Call close_actor instruction (closes account and returns rent)
-        const txSig = await program.methods
+        const txSig = await coreProgram.methods
             .closeActor(actorIdBN)
             .accounts({
             actor: actorPDA,
@@ -615,7 +613,7 @@ export const closeActorOnSolana = async (actorData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor close instruction: ${err.message || err.toString()}`);
     }
@@ -642,7 +640,7 @@ function validateAndConvertBatchId(batch_id, operationName = "operation") {
     catch (err) {
         throw new Error(`Invalid batch_id format: ${batch_id}. Must be a valid u64 (number or numeric string)`);
     }
-    const MAX_U64 = new BN('18446744073709551615');
+    const MAX_U64 = new BN("18446744073709551615");
     if (batchIdBN.lt(new BN(0)) || batchIdBN.gt(MAX_U64)) {
         throw new Error(`batch_id out of range: ${batch_id}. Must be between 0 and 18446744073709551615`);
     }
@@ -662,9 +660,9 @@ export const submitBatchToSolana = async (batchData) => {
     const batchIdBN = validateAndConvertBatchId(batch_id, "creation");
     // Convert status string to u8
     const statusMap = {
-        'for_sale': 0,
-        'stock': 1,
-        'consumed': 2,
+        for_sale: 0,
+        stock: 1,
+        consumed: 2,
     };
     const statusU8 = statusMap[status] ?? 1; // Default to 'stock'
     // Convert decimal values to integers for Solana storage
@@ -681,8 +679,8 @@ export const submitBatchToSolana = async (batchData) => {
         [batchPDA, bump] = PublicKey.findProgramAddressSync([
             Buffer.from("batch"),
             feePayer.publicKey.toBuffer(),
-            Buffer.from(batchIdBN.toArray("le", 8)),
-        ], PROGRAM_ID);
+            Buffer.from(new BN(batchIdBN).toArray("le", 4)), // batch_id is u32
+        ], TRACING_PROGRAM_ID);
         console.log("Batch PDA Derivation:", {
             batch_id: batchIdBN.toString(),
             pda: batchPDA.toBase58(),
@@ -696,15 +694,16 @@ export const submitBatchToSolana = async (batchData) => {
         }
     }
     catch (pdaErr) {
-        if (pdaErr.message?.includes('already exists')) {
+        if (pdaErr.message?.includes("already exists")) {
             throw pdaErr;
         }
         throw new Error(`Failed to derive PDA for batch_id ${batchIdBN.toString()}: ${pdaErr.message}`);
     }
     try {
-        if (!program.methods.createBatch) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("createBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.createBatch) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("createBatch method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         console.log("Calling createBatch with data:", {
             batch_id: batchIdBN.toString(),
@@ -719,10 +718,12 @@ export const submitBatchToSolana = async (batchData) => {
             price_per_kg: priceInCents,
             status: statusU8,
         });
-        const txSig = await program.methods
-            .createBatch(batchIdBN, qr_code || "", new BN(String(season_id || 0), 10), new BN(String(current_holder_id || 0), 10), milling_id ? new BN(String(milling_id), 10) : null, drying_id ? new BN(String(drying_id), 10) : null, validator ? new BN(String(validator), 10) : null, new BN(String(weightInGrams), 10), new BN(String(moistureBasisPoints), 10), new BN(String(priceInCents), 10), statusU8)
+        const txSig = await tracingProgram.methods
+            .createBatch(batchIdBN.toNumber(), qr_code || "", new BN(String(season_id || 0), 10).toNumber(), new BN(String(current_holder_id || 0), 10).toNumber(), milling_id ? new BN(String(milling_id), 10).toNumber() : null, drying_id ? new BN(String(drying_id), 10).toNumber() : null, validator ? new BN(String(validator), 10).toNumber() : null, weightInGrams, moistureBasisPoints, new BN(String(priceInCents), 10), // price_per_kg is u64
+        statusU8)
             .accounts({
             batch: batchPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -737,7 +738,7 @@ export const submitBatchToSolana = async (batchData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor createBatch instruction: ${err.message || err.toString()}`);
     }
@@ -757,14 +758,14 @@ export const checkBatchExistsOnSolana = async (batchId) => {
         const [batchPDA] = PublicKey.findProgramAddressSync([
             Buffer.from("batch"),
             feePayer.publicKey.toBuffer(),
-            Buffer.from(batchIdBN.toArray("le", 8)),
-        ], PROGRAM_ID);
+            Buffer.from(batchIdBN.toArray("le", 4)), // batch_id is u32
+        ], TRACING_PROGRAM_ID);
         const accountInfo = await connection.getAccountInfo(batchPDA);
         if (accountInfo === null) {
             console.log(`Batch ${batchIdBN.toString()} does not exist on Solana (PDA: ${batchPDA.toBase58()})`);
             return false;
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             console.warn(`Batch ${batchIdBN.toString()} account exists but is not owned by our program`);
             return false;
         }
@@ -787,19 +788,19 @@ export const getBatchFromSolana = async (batchId) => {
         const [batchPDA] = PublicKey.findProgramAddressSync([
             Buffer.from("batch"),
             feePayer.publicKey.toBuffer(),
-            Buffer.from(batchIdBN.toArray("le", 8)),
-        ], PROGRAM_ID);
+            Buffer.from(batchIdBN.toArray("le", 4)), // batch_id is u32
+        ], TRACING_PROGRAM_ID);
         try {
-            const batchAccount = await program.account.batchAccount.fetch(batchPDA);
+            const batchAccount = await tracingProgram.account.batchAccount.fetch(batchPDA);
             // Convert status back to string
             const statusMap = {
-                0: 'for_sale',
-                1: 'stock',
-                2: 'consumed',
+                0: "for_sale",
+                1: "stock",
+                2: "consumed",
             };
             return {
                 batch_id: batchAccount.batchId.toString(),
-                qr_code: Buffer.from(batchAccount.qrCode.slice(0, batchAccount.qrCodeLen)).toString('utf8'),
+                qr_code: Buffer.from(batchAccount.qrCode.slice(0, batchAccount.qrCodeLen)).toString("utf8"),
                 season_id: batchAccount.seasonId.toString(),
                 current_holder_id: batchAccount.currentHolderId.toString(),
                 milling_id: batchAccount.millingId.toString(),
@@ -808,7 +809,7 @@ export const getBatchFromSolana = async (batchId) => {
                 batch_weight_kg: batchAccount.batchWeightKg.toNumber() / 1000, // Convert grams back to kg
                 moisture_content: batchAccount.moistureContent.toNumber() / 100, // Convert basis points to percentage
                 price_per_kg: batchAccount.pricePerKg.toNumber() / 100, // Convert cents to currency
-                status: statusMap[batchAccount.status] || 'stock',
+                status: statusMap[batchAccount.status] || "stock",
                 is_active: batchAccount.isActive === 1,
                 timestamp: batchAccount.timestamp.toString(),
                 pda: batchPDA.toBase58(),
@@ -835,61 +836,75 @@ export const updateBatchOnSolana = async (batchData) => {
     const [batchPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("batch"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(batchIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(batchIdBN).toArray("le", 4)), // batch_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.updateBatch) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("updateBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.updateBatch) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("updateBatch method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify batch exists
         const accountInfo = await connection.getAccountInfo(batchPDA);
         if (accountInfo === null) {
             throw new Error(`Batch ${batch_id} does not exist on Solana. Cannot update non-existent batch.`);
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             throw new Error(`Batch ${batch_id} account exists but is not owned by the correct program.`);
         }
         // Convert status string to u8 if provided
         let statusU8 = null;
         if (status !== undefined && status !== null) {
             const statusMap = {
-                'for_sale': 0,
-                'stock': 1,
-                'consumed': 2,
+                for_sale: 0,
+                stock: 1,
+                consumed: 2,
             };
             statusU8 = statusMap[status] ?? null;
         }
         // Convert decimal values if provided
-        const weightInGrams = batch_weight_kg !== undefined ? Math.floor(batch_weight_kg * 1000) : null;
-        const moistureBasisPoints = moisture_content !== undefined ? Math.floor(moisture_content * 100) : null;
+        const weightInGrams = batch_weight_kg !== undefined
+            ? Math.floor(batch_weight_kg * 1000)
+            : null;
+        const moistureBasisPoints = moisture_content !== undefined
+            ? Math.floor(moisture_content * 100)
+            : null;
         const priceInCents = price_per_kg !== undefined ? Math.floor(price_per_kg * 100) : null;
         const params = [
-            batchIdBN,
-            current_holder_id !== undefined ? new BN(String(current_holder_id), 10) : null,
-            milling_id !== undefined ? new BN(String(milling_id), 10) : null,
-            drying_id !== undefined ? new BN(String(drying_id), 10) : null,
-            validator !== undefined ? new BN(String(validator), 10) : null,
-            weightInGrams !== null ? new BN(String(weightInGrams), 10) : null,
-            moistureBasisPoints !== null ? new BN(String(moistureBasisPoints), 10) : null,
-            priceInCents !== null ? new BN(String(priceInCents), 10) : null,
+            batchIdBN.toNumber(), // batch_id is u32
+            current_holder_id !== undefined
+                ? new BN(String(current_holder_id), 10).toNumber() // u32
+                : null,
+            milling_id !== undefined
+                ? new BN(String(milling_id), 10).toNumber()
+                : null, // u32
+            drying_id !== undefined
+                ? new BN(String(drying_id), 10).toNumber()
+                : null, // u32
+            validator !== undefined
+                ? new BN(String(validator), 10).toNumber()
+                : null, // u32
+            weightInGrams !== null ? weightInGrams : null, // u32
+            moistureBasisPoints !== null ? moistureBasisPoints : null, // u16
+            priceInCents !== null ? new BN(String(priceInCents), 10) : null, // u64
             statusU8,
         ];
         console.log("Calling updateBatch with parameters:", {
             batch_id: batchIdBN.toString(),
-            current_holder_id: params[1]?.toString() || null,
-            milling_id: params[2]?.toString() || null,
-            drying_id: params[3]?.toString() || null,
-            validator: params[4]?.toString() || null,
-            batch_weight_kg: params[5]?.toString() || null,
-            moisture_content: params[6]?.toString() || null,
+            current_holder_id: params[1],
+            milling_id: params[2],
+            drying_id: params[3],
+            validator: params[4],
+            batch_weight_kg: params[5],
+            moisture_content: params[6],
             price_per_kg: params[7]?.toString() || null,
             status: params[8],
         });
-        const txSig = await program.methods
+        const txSig = await tracingProgram.methods
             .updateBatch(...params)
             .accounts({
             batch: batchPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
         })
             .signers([feePayer])
@@ -903,7 +918,7 @@ export const updateBatchOnSolana = async (batchData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor updateBatch instruction: ${err.message || err.toString()}`);
     }
@@ -919,24 +934,25 @@ export const deleteBatchOnSolana = async (batchData) => {
     const [batchPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("batch"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(batchIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(batchIdBN).toArray("le", 4)), // batch_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.deleteBatch) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("deleteBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.deleteBatch) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("deleteBatch method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify batch exists
         const accountInfo = await connection.getAccountInfo(batchPDA);
         if (accountInfo === null) {
             throw new Error(`Batch ${batchIdBN.toString()} does not exist on Solana. Cannot delete non-existent batch.`);
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             throw new Error(`Batch ${batchIdBN.toString()} account exists but is not owned by the correct program.`);
         }
         console.log("Calling deleteBatch with batch_id:", batchIdBN.toString());
-        const txSig = await program.methods
-            .deleteBatch(batchIdBN)
+        const txSig = await tracingProgram.methods
+            .deleteBatch(batchIdBN.toNumber())
             .accounts({
             batch: batchPDA,
             authority: wallet.publicKey,
@@ -952,7 +968,7 @@ export const deleteBatchOnSolana = async (batchData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor deleteBatch instruction: ${err.message || err.toString()}`);
     }
@@ -969,25 +985,26 @@ export const closeBatchOnSolana = async (batchData) => {
     const [batchPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("batch"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(batchIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(batchIdBN).toArray("le", 4)), // batch_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.closeBatch) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("closeBatch method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.closeBatch) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("closeBatch method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify batch exists
         const accountInfo = await connection.getAccountInfo(batchPDA);
         if (accountInfo === null) {
             throw new Error(`Batch ${batchIdBN.toString()} does not exist on Solana. Cannot close non-existent batch.`);
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             throw new Error(`Batch ${batchIdBN.toString()} account exists but is not owned by the correct program.`);
         }
         console.log("Calling closeBatch with batch_id:", batchIdBN.toString());
         console.log("WARNING: This will permanently delete the account and return rent");
-        const txSig = await program.methods
-            .closeBatch(batchIdBN)
+        const txSig = await tracingProgram.methods
+            .closeBatch(batchIdBN.toNumber())
             .accounts({
             batch: batchPDA,
             authority: wallet.publicKey,
@@ -1003,7 +1020,7 @@ export const closeBatchOnSolana = async (batchData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor closeBatch instruction: ${err.message || err.toString()}`);
     }
@@ -1019,10 +1036,10 @@ const validateAndConvertDryingId = (drying_id, operation) => {
         throw new Error(`Missing drying_id for ${operation}`);
     }
     let dryingIdBN;
-    if (typeof drying_id === 'string') {
+    if (typeof drying_id === "string") {
         dryingIdBN = new BN(drying_id);
     }
-    else if (typeof drying_id === 'number') {
+    else if (typeof drying_id === "number") {
         dryingIdBN = new BN(drying_id);
     }
     else if (BN.isBN(drying_id)) {
@@ -1042,49 +1059,37 @@ const validateAndConvertDryingId = (drying_id, operation) => {
  * @returns Transaction signature
  */
 export const submitDryingToSolana = async (dryingData) => {
-    const { drying_id, batch_id, dryer_actor_id, initial_mc, final_mc, temperature, airflow, humidity, duration, price, initial_weight, final_weight } = dryingData;
+    const { drying_id, batch_id, dryer_actor_id, initial_mc, final_mc, temperature, airflow, humidity, duration, price, initial_weight, final_weight, } = dryingData;
     const dryingIdBN = validateAndConvertDryingId(drying_id, "submission");
     const [dryingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("drying"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(dryingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
-    // Convert values to BN (Solana uses u64 for numeric fields)
-    // Moisture content: stored as basis points (22.5% = 2250)
-    // Temperature: stored * 100 (45.5°C = 4550)
-    // Airflow: stored * 100
-    // Humidity: stored as basis points
-    // Duration: stored in minutes
-    // Price: stored in cents
-    // Weights: stored in grams
-    const batchIdBN = new BN(batch_id || 0);
-    const dryerActorIdBN = new BN(dryer_actor_id || 0);
-    const initialMcBN = new BN(Math.round((initial_mc || 0) * 100));
-    const finalMcBN = new BN(Math.round((final_mc || 0) * 100));
-    const temperatureBN = new BN(Math.round((temperature || 0) * 100));
-    const airflowBN = new BN(Math.round((airflow || 0) * 100));
-    const humidityBN = new BN(Math.round((humidity || 0) * 100));
-    const durationBN = new BN(Math.round((duration || 0) * 60)); // Convert hours to minutes
-    const priceBN = new BN(Math.round((price || 0) * 100)); // Convert to cents
-    const initialWeightBN = new BN(Math.round((initial_weight || 0) * 1000)); // Convert kg to grams
-    const finalWeightBN = new BN(Math.round((final_weight || 0) * 1000)); // Convert kg to grams
+        Buffer.from(new BN(dryingIdBN).toArray("le", 4)), // drying_id is u32
+    ], TRACING_PROGRAM_ID);
+    // Convert values to BN or number based on IDL types (u32, u16, u64)
+    const batchIdNum = new BN(String(batch_id || 0), 10).toNumber();
+    const dryerActorIdNum = new BN(String(dryer_actor_id || 0), 10).toNumber();
+    const initialMcNum = Math.round((initial_mc || 0) * 100); // u16
+    const finalMcNum = Math.round((final_mc || 0) * 100); // u16
+    const temperatureNum = Math.round((temperature || 0) * 100); // u16
+    const airflowNum = Math.round((airflow || 0) * 100); // u16
+    const humidityNum = Math.round((humidity || 0) * 100); // u16
+    const durationNum = Math.round((duration || 0) * 60); // u32 (minutes)
+    const priceBN = new BN(String(Math.round((price || 0) * 100)), 10); // u64 (cents)
+    const initialWeightNum = Math.round((initial_weight || 0) * 1000); // u32 (grams)
+    const finalWeightNum = Math.round((final_weight || 0) * 1000); // u32 (grams)
     try {
-        if (!program.methods.createDrying) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("createDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.createDrying) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("createDrying method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         console.log("Calling createDrying with drying_id:", dryingIdBN.toString());
-        console.log("Drying payload:", {
-            drying_id: dryingIdBN.toString(),
-            batch_id: batchIdBN.toString(),
-            dryer_actor_id: dryerActorIdBN.toString(),
-            initial_mc: initialMcBN.toString(),
-            final_mc: finalMcBN.toString(),
-        });
-        const txSig = await program.methods
-            .createDrying(dryingIdBN, batchIdBN, dryerActorIdBN, initialMcBN, finalMcBN, temperatureBN, airflowBN, humidityBN, durationBN, priceBN, initialWeightBN, finalWeightBN)
+        const txSig = await tracingProgram.methods
+            .createDrying(dryingIdBN.toNumber(), batchIdNum, dryerActorIdNum, initialMcNum, finalMcNum, temperatureNum, airflowNum, humidityNum, durationNum, priceBN, initialWeightNum, finalWeightNum)
             .accounts({
             drying: dryingPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -1099,7 +1104,7 @@ export const submitDryingToSolana = async (dryingData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor createDrying instruction: ${err.message || err.toString()}`);
     }
@@ -1114,19 +1119,19 @@ export const checkDryingExistsOnSolana = async (dryingId) => {
     const [dryingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("drying"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(dryingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(dryingIdBN.toArray("le", 4)), // drying_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
         const accountInfo = await connection.getAccountInfo(dryingPDA);
         if (accountInfo === null) {
             return { exists: false };
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             return { exists: false };
         }
         return {
             exists: true,
-            pda: dryingPDA.toBase58()
+            pda: dryingPDA.toBase58(),
         };
     }
     catch (err) {
@@ -1144,10 +1149,10 @@ export const getDryingFromSolana = async (dryingId) => {
     const [dryingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("drying"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(dryingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(dryingIdBN.toArray("le", 4)), // drying_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        const dryingAccount = await program.account.dryingAccount.fetch(dryingPDA);
+        const dryingAccount = await tracingProgram.account.dryingAccount.fetch(dryingPDA);
         return {
             drying_id: dryingAccount.dryingId.toString(),
             batch_id: dryingAccount.batchId.toString(),
@@ -1163,7 +1168,7 @@ export const getDryingFromSolana = async (dryingId) => {
             final_weight: dryingAccount.finalWeight.toNumber() / 1000,
             is_active: dryingAccount.isActive === 1,
             timestamp: dryingAccount.timestamp.toNumber(),
-            pda: dryingPDA.toBase58()
+            pda: dryingPDA.toBase58(),
         };
     }
     catch (err) {
@@ -1182,31 +1187,47 @@ export const updateDryingOnSolana = async (dryingData) => {
     const [dryingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("drying"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(dryingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
-    // Convert optional fields to BN or null
+        Buffer.from(new BN(dryingIdBN).toArray("le", 4)), // drying_id is u32
+    ], TRACING_PROGRAM_ID);
+    // Convert optional fields to IDL types (u32, u16, u64)
+    const batchId = updateFields.batch_id !== undefined
+        ? new BN(String(updateFields.batch_id), 10).toNumber()
+        : null;
+    const dryerActorId = updateFields.dryer_actor_id !== undefined
+        ? new BN(String(updateFields.dryer_actor_id), 10).toNumber()
+        : null;
     const initialMc = updateFields.initial_mc !== undefined
-        ? new BN(Math.round(updateFields.initial_mc * 100)) : null;
+        ? Math.round(updateFields.initial_mc * 100)
+        : null; // u16
     const finalMc = updateFields.final_mc !== undefined
-        ? new BN(Math.round(updateFields.final_mc * 100)) : null;
+        ? Math.round(updateFields.final_mc * 100)
+        : null; // u16
     const temperature = updateFields.temperature !== undefined
-        ? new BN(Math.round(updateFields.temperature * 100)) : null;
+        ? Math.round(updateFields.temperature * 100)
+        : null; // u16
     const airflow = updateFields.airflow !== undefined
-        ? new BN(Math.round(updateFields.airflow * 100)) : null;
+        ? Math.round(updateFields.airflow * 100)
+        : null; // u32
     const humidity = updateFields.humidity !== undefined
-        ? new BN(Math.round(updateFields.humidity * 100)) : null;
+        ? Math.round(updateFields.humidity * 100)
+        : null; // u16
     const duration = updateFields.duration !== undefined
-        ? new BN(Math.round(updateFields.duration * 60)) : null;
+        ? Math.round(updateFields.duration * 60)
+        : null; // u16
     const price = updateFields.price !== undefined
-        ? new BN(Math.round(updateFields.price * 100)) : null;
+        ? new BN(String(Math.round(updateFields.price * 100)), 10)
+        : null; // u64
     const initialWeight = updateFields.initial_weight !== undefined
-        ? new BN(Math.round(updateFields.initial_weight * 1000)) : null;
+        ? Math.round(updateFields.initial_weight * 1000)
+        : null; // u32
     const finalWeight = updateFields.final_weight !== undefined
-        ? new BN(Math.round(updateFields.final_weight * 1000)) : null;
+        ? Math.round(updateFields.final_weight * 1000)
+        : null; // u32
     try {
-        if (!program.methods.updateDrying) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("updateDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.updateDrying) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("updateDrying method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify drying exists
         const accountInfo = await connection.getAccountInfo(dryingPDA);
@@ -1214,10 +1235,11 @@ export const updateDryingOnSolana = async (dryingData) => {
             throw new Error(`Drying ${dryingIdBN.toString()} does not exist on Solana. Cannot update non-existent drying.`);
         }
         console.log("Calling updateDrying with drying_id:", dryingIdBN.toString());
-        const txSig = await program.methods
-            .updateDrying(dryingIdBN, initialMc, finalMc, temperature, airflow, humidity, duration, price, initialWeight, finalWeight)
+        const txSig = await tracingProgram.methods
+            .updateDrying(dryingIdBN.toNumber(), batchId, dryerActorId, initialMc, finalMc, temperature, airflow, humidity, duration, price, initialWeight, finalWeight)
             .accounts({
             drying: dryingPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
         })
             .signers([feePayer])
@@ -1241,12 +1263,13 @@ export const deleteDryingOnSolana = async (dryingData) => {
     const [dryingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("drying"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(dryingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(dryingIdBN).toArray("le", 4)), // drying_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.deleteDrying) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("deleteDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.deleteDrying) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("deleteDrying method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify drying exists
         const accountInfo = await connection.getAccountInfo(dryingPDA);
@@ -1254,8 +1277,8 @@ export const deleteDryingOnSolana = async (dryingData) => {
             throw new Error(`Drying ${dryingIdBN.toString()} does not exist on Solana. Cannot delete non-existent drying.`);
         }
         console.log("Calling deleteDrying with drying_id:", dryingIdBN.toString());
-        const txSig = await program.methods
-            .deleteDrying(dryingIdBN)
+        const txSig = await tracingProgram.methods
+            .deleteDrying(dryingIdBN.toNumber())
             .accounts({
             drying: dryingPDA,
             authority: wallet.publicKey,
@@ -1282,12 +1305,13 @@ export const closeDryingOnSolana = async (dryingData) => {
     const [dryingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("drying"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(dryingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(dryingIdBN).toArray("le", 4)), // drying_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.closeDrying) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("closeDrying method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.closeDrying) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("closeDrying method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify drying exists
         const accountInfo = await connection.getAccountInfo(dryingPDA);
@@ -1296,8 +1320,8 @@ export const closeDryingOnSolana = async (dryingData) => {
         }
         console.log("Calling closeDrying with drying_id:", dryingIdBN.toString());
         console.log("WARNING: This will permanently delete the account and return rent");
-        const txSig = await program.methods
-            .closeDrying(dryingIdBN)
+        const txSig = await tracingProgram.methods
+            .closeDrying(dryingIdBN.toNumber())
             .accounts({
             drying: dryingPDA,
             authority: wallet.publicKey,
@@ -1323,10 +1347,10 @@ const validateAndConvertMillingId = (milling_id, operation) => {
         throw new Error(`Missing milling_id for ${operation}`);
     }
     let millingIdBN;
-    if (typeof milling_id === 'string') {
+    if (typeof milling_id === "string") {
         millingIdBN = new BN(milling_id);
     }
-    else if (typeof milling_id === 'number') {
+    else if (typeof milling_id === "number") {
         millingIdBN = new BN(milling_id);
     }
     else if (BN.isBN(milling_id)) {
@@ -1348,46 +1372,40 @@ const validateAndConvertMillingId = (milling_id, operation) => {
 export const submitMillingToSolana = async (millingData) => {
     const { milling_id, miller_id, // farmer_id from MySQL
     batch_id, // Primary batch ID (first from batch_ids array)
-    milling_type, quality, total_weight_kg, total_weight_processed_kg, recovery, moisture, price, actual_price } = millingData;
+    milling_type, quality, total_weight_kg, total_weight_processed_kg, recovery, moisture, price, actual_price, } = millingData;
     const millingIdBN = validateAndConvertMillingId(milling_id, "submission");
     const [millingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("milling"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(millingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
-    // Convert values to BN (Solana uses u64 for numeric fields)
-    const millerIdBN = new BN(miller_id || 0);
-    const batchIdBN = new BN(batch_id || 0);
-    // Weight: stored in grams (1000 kg = 1000000 grams) - handle string input
-    const totalWeightKgNum = typeof total_weight_kg === 'string' ? parseFloat(total_weight_kg) : (total_weight_kg || 0);
-    const totalWeightKgBN = new BN(Math.round(totalWeightKgNum * 1000));
-    const totalWeightProcessedKgBN = new BN(Math.round((total_weight_processed_kg || 0) * 1000));
-    // Recovery: stored as basis points (75.5% = 7550)
-    const recoveryBN = new BN(Math.round((recovery || 0) * 100));
-    // Moisture: stored as basis points (12.5% = 1250)
-    const moistureBN = new BN(Math.round((moisture || 0) * 100));
-    // Price: stored in cents
-    const priceBN = new BN(Math.round((price || 0) * 100));
-    const actualPriceBN = new BN(Math.round((actual_price || 0) * 100));
+        Buffer.from(new BN(millingIdBN).toArray("le", 4)), // milling_id is u32
+    ], TRACING_PROGRAM_ID);
+    // Convert values based on IDL types (u32, u16, u64)
+    const millerIdNum = new BN(String(miller_id || 0), 10).toNumber();
+    const batchIdNum = new BN(String(batch_id || 0), 10).toNumber();
+    const totalWeightKgNum = typeof total_weight_kg === "string"
+        ? parseFloat(total_weight_kg)
+        : total_weight_kg || 0;
+    const totalWeightKgGrams = Math.round(totalWeightKgNum * 1000); // u32
+    const totalWeightProcessedKgNum = typeof total_weight_processed_kg === "string"
+        ? parseFloat(total_weight_processed_kg)
+        : total_weight_processed_kg || 0;
+    const totalWeightProcessedGrams = Math.round(totalWeightProcessedKgNum * 1000); // u32
+    const recoveryNum = Math.round((recovery || 0) * 100); // u16
+    const moistureNum = Math.round((moisture || 0) * 100); // u16
+    const priceBN = new BN(String(Math.round((price || 0) * 100)), 10); // u64
+    const actualPriceBN = new BN(String(Math.round((actual_price || 0) * 100)), 10); // u64
     try {
-        if (!program.methods.createMilling) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("createMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.createMilling) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("createMilling method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         console.log("Calling createMilling with milling_id:", millingIdBN.toString());
-        console.log("Milling payload:", {
-            milling_id: millingIdBN.toString(),
-            miller_id: millerIdBN.toString(),
-            batch_id: batchIdBN.toString(),
-            milling_type: milling_type || '',
-            quality: quality || '',
-            total_weight_kg: totalWeightKgBN.toString(),
-            total_weight_processed_kg: totalWeightProcessedKgBN.toString(),
-        });
-        const txSig = await program.methods
-            .createMilling(millingIdBN, millerIdBN, batchIdBN, milling_type || '', quality || '', totalWeightKgBN, totalWeightProcessedKgBN, recoveryBN, moistureBN, priceBN, actualPriceBN)
+        const txSig = await tracingProgram.methods
+            .createMilling(millingIdBN.toNumber(), millerIdNum, batchIdNum, milling_type || "", quality || "", totalWeightKgGrams, totalWeightProcessedGrams, recoveryNum, moistureNum, priceBN, actualPriceBN)
             .accounts({
             milling: millingPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -1402,7 +1420,7 @@ export const submitMillingToSolana = async (millingData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor createMilling instruction: ${err.message || err.toString()}`);
     }
@@ -1417,19 +1435,19 @@ export const checkMillingExistsOnSolana = async (millingId) => {
     const [millingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("milling"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(millingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(millingIdBN.toArray("le", 4)), // milling_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
         const accountInfo = await connection.getAccountInfo(millingPDA);
         if (accountInfo === null) {
             return { exists: false };
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             return { exists: false };
         }
         return {
             exists: true,
-            pda: millingPDA.toBase58()
+            pda: millingPDA.toBase58(),
         };
     }
     catch (err) {
@@ -1447,16 +1465,16 @@ export const getMillingFromSolana = async (millingId) => {
     const [millingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("milling"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(millingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(millingIdBN.toArray("le", 4)), // milling_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        const millingAccount = await program.account.millingAccount.fetch(millingPDA);
+        const millingAccount = await tracingProgram.account.millingAccount.fetch(millingPDA);
         // Decode milling_type from buffer
         const millingTypeBytes = millingAccount.millingType.slice(0, millingAccount.millingTypeLen);
-        const millingType = Buffer.from(millingTypeBytes).toString('utf8');
+        const millingType = Buffer.from(millingTypeBytes).toString("utf8");
         // Decode quality from buffer
         const qualityBytes = millingAccount.quality.slice(0, millingAccount.qualityLen);
-        const quality = Buffer.from(qualityBytes).toString('utf8');
+        const quality = Buffer.from(qualityBytes).toString("utf8");
         return {
             milling_id: millingAccount.millingId.toString(),
             miller_id: millingAccount.millerId.toString(),
@@ -1471,7 +1489,7 @@ export const getMillingFromSolana = async (millingId) => {
             actual_price: millingAccount.actualPrice.toNumber() / 100,
             is_active: millingAccount.isActive === 1,
             timestamp: millingAccount.timestamp.toNumber(),
-            pda: millingPDA.toBase58()
+            pda: millingPDA.toBase58(),
         };
     }
     catch (err) {
@@ -1491,45 +1509,50 @@ export const updateMillingOnSolana = async (millingData) => {
     const [millingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("milling"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(millingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
-    // Use sentinel values for fields not being updated
-    const U64_MAX = new BN("18446744073709551615"); // u64::MAX
-    // String fields: empty string = no update
-    const millingType = updateFields.milling_type !== undefined ? (updateFields.milling_type || '') : '';
-    const quality = updateFields.quality !== undefined ? (updateFields.quality || '') : '';
-    // Numeric fields: u64::MAX = no update
-    let totalWeightKgBN = U64_MAX;
+        Buffer.from(new BN(millingIdBN).toArray("le", 4)), // milling_id is u32
+    ], TRACING_PROGRAM_ID);
+    // Using Sentinels based on IDL docs: "Sentinels: u32::MAX / u16::MAX / u64::MAX = no update; empty string = no update"
+    const U32_MAX = 4294967295;
+    const U16_MAX = 65535;
+    const U64_MAX = new BN("18446744073709551615");
+    const millerId = updateFields.miller_id !== undefined
+        ? new BN(String(updateFields.miller_id), 10).toNumber()
+        : U32_MAX;
+    const batchId = updateFields.batch_id !== undefined
+        ? new BN(String(updateFields.batch_id), 10).toNumber()
+        : U32_MAX;
+    const millingType = updateFields.milling_type !== undefined
+        ? updateFields.milling_type || ""
+        : "";
+    const quality = updateFields.quality !== undefined ? updateFields.quality || "" : "";
+    let totalWeightGrams = U32_MAX;
     if (updateFields.total_weight_kg !== undefined) {
-        const totalWeightKgNum = typeof updateFields.total_weight_kg === 'string'
+        const kg = typeof updateFields.total_weight_kg === "string"
             ? parseFloat(updateFields.total_weight_kg)
             : updateFields.total_weight_kg;
-        totalWeightKgBN = new BN(Math.round(totalWeightKgNum * 1000));
+        totalWeightGrams = Math.round(kg * 1000);
     }
-    let totalWeightProcessedKgBN = U64_MAX;
+    let totalWeightProcessedGrams = U32_MAX;
     if (updateFields.total_weight_processed_kg !== undefined) {
-        totalWeightProcessedKgBN = new BN(Math.round(updateFields.total_weight_processed_kg * 1000));
+        totalWeightProcessedGrams = Math.round(updateFields.total_weight_processed_kg * 1000);
     }
-    let recoveryBN = U64_MAX;
-    if (updateFields.recovery !== undefined) {
-        recoveryBN = new BN(Math.round(updateFields.recovery * 100));
-    }
-    let moistureBN = U64_MAX;
-    if (updateFields.moisture !== undefined) {
-        moistureBN = new BN(Math.round(updateFields.moisture * 100));
-    }
-    let priceBN = U64_MAX;
-    if (updateFields.price !== undefined) {
-        priceBN = new BN(Math.round(updateFields.price * 100));
-    }
-    let actualPriceBN = U64_MAX;
-    if (updateFields.actual_price !== undefined) {
-        actualPriceBN = new BN(Math.round(updateFields.actual_price * 100));
-    }
+    const recoveryNum = updateFields.recovery !== undefined
+        ? Math.round(updateFields.recovery * 100)
+        : U16_MAX;
+    const moistureNum = updateFields.moisture !== undefined
+        ? Math.round(updateFields.moisture * 100)
+        : U16_MAX;
+    const priceBN = updateFields.price !== undefined
+        ? new BN(String(Math.round(updateFields.price * 100)), 10)
+        : U64_MAX;
+    const actualPriceBN = updateFields.actual_price !== undefined
+        ? new BN(String(Math.round(updateFields.actual_price * 100)), 10)
+        : U64_MAX;
     try {
-        if (!program.methods.updateMilling) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("updateMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.updateMilling) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("updateMilling method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify milling exists
         const accountInfo = await connection.getAccountInfo(millingPDA);
@@ -1537,10 +1560,11 @@ export const updateMillingOnSolana = async (millingData) => {
             throw new Error(`Milling ${millingIdBN.toString()} does not exist on Solana. Cannot update non-existent milling.`);
         }
         console.log("Calling updateMilling with milling_id:", millingIdBN.toString());
-        const txSig = await program.methods
-            .updateMilling(millingIdBN, millingType, quality, totalWeightKgBN, totalWeightProcessedKgBN, recoveryBN, moistureBN, priceBN, actualPriceBN)
+        const txSig = await tracingProgram.methods
+            .updateMilling(millingIdBN.toNumber(), millerId, batchId, millingType, quality, totalWeightGrams, totalWeightProcessedGrams, recoveryNum, moistureNum, priceBN, actualPriceBN)
             .accounts({
             milling: millingPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
         })
             .signers([feePayer])
@@ -1564,12 +1588,13 @@ export const deleteMillingOnSolana = async (millingData) => {
     const [millingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("milling"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(millingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(millingIdBN).toArray("le", 4)), // milling_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.deleteMilling) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("deleteMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.deleteMilling) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("deleteMilling method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify milling exists
         const accountInfo = await connection.getAccountInfo(millingPDA);
@@ -1577,8 +1602,8 @@ export const deleteMillingOnSolana = async (millingData) => {
             throw new Error(`Milling ${millingIdBN.toString()} does not exist on Solana. Cannot delete non-existent milling.`);
         }
         console.log("Calling deleteMilling with milling_id:", millingIdBN.toString());
-        const txSig = await program.methods
-            .deleteMilling(millingIdBN)
+        const txSig = await tracingProgram.methods
+            .deleteMilling(millingIdBN.toNumber())
             .accounts({
             milling: millingPDA,
             authority: wallet.publicKey,
@@ -1605,12 +1630,13 @@ export const closeMillingOnSolana = async (millingData) => {
     const [millingPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("milling"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(millingIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(millingIdBN).toArray("le", 4)), // milling_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.closeMilling) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("closeMilling method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.closeMilling) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("closeMilling method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify milling exists
         const accountInfo = await connection.getAccountInfo(millingPDA);
@@ -1619,8 +1645,8 @@ export const closeMillingOnSolana = async (millingData) => {
         }
         console.log("Calling closeMilling with milling_id:", millingIdBN.toString());
         console.log("WARNING: This will permanently delete the account and return rent");
-        const txSig = await program.methods
-            .closeMilling(millingIdBN)
+        const txSig = await tracingProgram.methods
+            .closeMilling(millingIdBN.toNumber())
             .accounts({
             milling: millingPDA,
             authority: wallet.publicKey,
@@ -1646,10 +1672,10 @@ const validateAndConvertSeasonId = (season_id, operation) => {
         throw new Error(`Missing season_id for ${operation}`);
     }
     let seasonIdBN;
-    if (typeof season_id === 'string') {
+    if (typeof season_id === "string") {
         seasonIdBN = new BN(season_id);
     }
-    else if (typeof season_id === 'number') {
+    else if (typeof season_id === "number") {
         seasonIdBN = new BN(season_id);
     }
     else if (BN.isBN(season_id)) {
@@ -1670,7 +1696,7 @@ const dateToUnixTimestamp = (date) => {
     if (!date)
         return null;
     try {
-        const dateObj = typeof date === 'string' ? new Date(date) : date;
+        const dateObj = typeof date === "string" ? new Date(date) : date;
         if (isNaN(dateObj.getTime())) {
             return null;
         }
@@ -1693,80 +1719,72 @@ export const submitSeasonToSolana = async (seasonData) => {
     const [seasonPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("season"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(seasonIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
-    // Convert season enum string to u8 (0=wet, 1=dry, 255=not set)
-    let seasonU8 = null;
-    if (season !== undefined && season !== null) {
-        if (season === 'wet') {
-            seasonU8 = 0;
-        }
-        else if (season === 'dry') {
-            seasonU8 = 1;
-        }
-    }
-    // Convert validation_status enum string to u8 (0=pending, 1=validated, 2=rejected)
-    let validationStatusU8 = null;
-    if (validation_status !== undefined && validation_status !== null) {
-        const statusMap = {
-            'pending': 0,
-            'validated': 1,
-            'rejected': 2,
-        };
-        validationStatusU8 = statusMap[validation_status] ?? null;
-    }
-    // Convert dates to Unix timestamps
+        Buffer.from(new BN(seasonIdBN).toArray("le", 4)), // season_id is u32
+    ], TRACING_PROGRAM_ID);
+    const seasonU8 = season !== undefined
+        ? season === "wet"
+            ? 0
+            : season === "dry"
+                ? 1
+                : 255
+        : 255;
+    const validationStatusU8 = validation_status !== undefined
+        ? validation_status === "pending"
+            ? 0
+            : validation_status === "validated"
+                ? 1
+                : validation_status === "rejected"
+                    ? 2
+                    : 255
+        : 255;
+    const moistureBasisPoints = moisture_content !== undefined
+        ? Math.floor(moisture_content * 100)
+        : null;
     const plantingDateTimestamp = dateToUnixTimestamp(planting_date);
     const harvestDateTimestamp = dateToUnixTimestamp(harvest_date);
-    // Convert decimal values to integers for Solana storage
-    // Weights: kg to grams (multiply by 1000)
-    const totalYieldInGrams = total_yield_kg !== undefined && total_yield_kg !== null
-        ? Math.floor(total_yield_kg * 1000) : null;
-    const processedYieldInGrams = processed_yield_kg !== undefined && processed_yield_kg !== null
-        ? Math.floor(processed_yield_kg * 1000) : null;
-    // Moisture: percentage to basis points (multiply by 100)
-    const moistureBasisPoints = moisture_content !== undefined && moisture_content !== null
-        ? Math.floor(moisture_content * 100) : null;
-    // Convert carbon_smart_certified boolean to u8
-    const carbonSmartU8 = carbon_smart_certified !== undefined && carbon_smart_certified !== null
-        ? (carbon_smart_certified ? 1 : 0) : null;
+    const totalYieldInGrams = total_yield_kg !== undefined ? Math.floor(total_yield_kg * 1000) : null;
+    const processedYieldInGrams = processed_yield_kg !== undefined
+        ? Math.floor(processed_yield_kg * 1000)
+        : null;
+    const carbonSmartU8 = carbon_smart_certified !== undefined
+        ? carbon_smart_certified
+            ? 1
+            : 0
+        : 255;
+    // Convert values based on IDL types and sentinels
+    const farmerIdNum = new BN(String(farmer_id || 0), 10).toNumber();
+    const moistureNum = moistureBasisPoints !== null ? moistureBasisPoints : 65535; // u16::MAX
+    const validatorIdNum = validator_id
+        ? new BN(String(validator_id), 10).toNumber()
+        : 4294967295; // u32::MAX
+    // Sentinels
+    const MAX_U64 = new BN("18446744073709551615");
+    const MIN_I64 = new BN("-9223372036854775808");
     try {
-        if (!program.methods.createSeason) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("createSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.createSeason) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("createSeason method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         console.log("Calling createSeason with season_id:", seasonIdBN.toString());
-        console.log("Season payload:", {
-            season_id: seasonIdBN.toString(),
-            farmer_id,
-            crop_year,
-            season: seasonU8,
-            variety,
-            total_yield_kg: totalYieldInGrams,
-        });
-        // Use sentinel values instead of null to reduce stack usage
-        // Sentinels: u64::MAX = not set, i64::MIN = not set, 255 = not set (u8), empty string = not set
-        const MAX_U64 = new BN('18446744073709551615'); // u64::MAX
-        const MIN_I64 = new BN('-9223372036854775808'); // i64::MIN
-        const txSig = await program.methods
-            .createSeason(seasonIdBN, new BN(String(farmer_id || 0), 10), crop_year || "", seasonU8 !== null ? seasonU8 : 255, // 255 = not set
-        variety || "", // Empty string = not set
-        planned_practice || "", // Empty string = not set
-        plantingDateTimestamp !== null ? new BN(plantingDateTimestamp, 10) : MIN_I64, // i64::MIN = not set
-        irrigation_practice || "", // Empty string = not set
-        fertilizer_used || "", // Empty string = not set
-        pesticide_used || "", // Empty string = not set
-        harvestDateTimestamp !== null ? new BN(harvestDateTimestamp, 10) : MIN_I64, // i64::MIN = not set
-        totalYieldInGrams !== null ? new BN(String(totalYieldInGrams), 10) : MAX_U64, // u64::MAX = not set
-        processedYieldInGrams !== null ? new BN(String(processedYieldInGrams), 10) : MAX_U64, // u64::MAX = not set
-        moistureBasisPoints !== null ? new BN(String(moistureBasisPoints), 10) : MAX_U64, // u64::MAX = not set
-        carbonSmartU8 !== null ? carbonSmartU8 : 255, // 255 = not set
-        validationStatusU8 !== null ? validationStatusU8 : 255, // 255 = not set
-        validator_id ? new BN(String(validator_id), 10) : MAX_U64, // u64::MAX = not set
-        geotagging || "" // Empty string = not set
-        )
+        const txSig = await tracingProgram.methods
+            .createSeason(seasonIdBN.toNumber(), farmerIdNum, crop_year || "", seasonU8 !== null ? seasonU8 : 255, variety || "", planned_practice || "", plantingDateTimestamp !== null
+            ? new BN(plantingDateTimestamp, 10)
+            : MIN_I64, irrigation_practice || "", fertilizer_used || "", pesticide_used || "", harvestDateTimestamp !== null
+            ? new BN(harvestDateTimestamp, 10)
+            : MIN_I64, totalYieldInGrams !== null
+            ? new BN(String(totalYieldInGrams), 10)
+            : MAX_U64, processedYieldInGrams !== null
+            ? new BN(String(processedYieldInGrams), 10)
+            : MAX_U64, moistureNum, carbonSmartU8 !== null ? carbonSmartU8 : 255, validationStatusU8 !== null ? validationStatusU8 : 255, validatorIdNum, geotagging || "")
             .accounts({
             season: seasonPDA,
+            farmerActor: PublicKey.findProgramAddressSync([
+                Buffer.from("actor"),
+                feePayer.publicKey.toBuffer(),
+                Buffer.from(new BN(farmerIdNum).toArray("le", 8)),
+            ], CORE_PROGRAM_ID)[0],
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -1781,7 +1799,7 @@ export const submitSeasonToSolana = async (seasonData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to execute Anchor createSeason instruction: ${err.message || err.toString()}`);
     }
@@ -1796,19 +1814,19 @@ export const checkSeasonExistsOnSolana = async (seasonId) => {
     const [seasonPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("season"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(seasonIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(seasonIdBN.toArray("le", 4)), // season_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
         const accountInfo = await connection.getAccountInfo(seasonPDA);
         if (accountInfo === null) {
             return { exists: false };
         }
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(TRACING_PROGRAM_ID)) {
             return { exists: false };
         }
         return {
             exists: true,
-            pda: seasonPDA.toBase58()
+            pda: seasonPDA.toBase58(),
         };
     }
     catch (err) {
@@ -1826,23 +1844,23 @@ export const getSeasonFromSolana = async (seasonId) => {
     const [seasonPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("season"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(seasonIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(seasonIdBN.toArray("le", 4)), // season_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        const seasonAccount = await program.account.seasonAccount.fetch(seasonPDA);
+        const seasonAccount = await tracingProgram.account.seasonAccount.fetch(seasonPDA);
         // Convert season u8 back to string
         const seasonMap = {
-            0: 'wet',
-            1: 'dry',
+            0: "wet",
+            1: "dry",
         };
         const seasonStr = seasonMap[seasonAccount.season] || null;
         // Convert validation_status u8 back to string
         const validationStatusMap = {
-            0: 'pending',
-            1: 'validated',
-            2: 'rejected',
+            0: "pending",
+            1: "validated",
+            2: "rejected",
         };
-        const validationStatusStr = validationStatusMap[seasonAccount.validationStatus] || 'pending';
+        const validationStatusStr = validationStatusMap[seasonAccount.validationStatus] || "pending";
         // Convert Unix timestamps back to ISO date strings
         const plantingDate = seasonAccount.plantingDate.toNumber() > 0
             ? new Date(seasonAccount.plantingDate.toNumber() * 1000).toISOString()
@@ -1853,23 +1871,23 @@ export const getSeasonFromSolana = async (seasonId) => {
         return {
             season_id: seasonAccount.seasonId.toString(),
             farmer_id: seasonAccount.farmerId.toString(),
-            crop_year: Buffer.from(seasonAccount.cropYear.slice(0, seasonAccount.cropYearLen)).toString('utf8'),
+            crop_year: Buffer.from(seasonAccount.cropYear.slice(0, seasonAccount.cropYearLen)).toString("utf8"),
             season: seasonStr,
             variety: seasonAccount.varietyLen > 0
-                ? Buffer.from(seasonAccount.variety.slice(0, seasonAccount.varietyLen)).toString('utf8')
+                ? Buffer.from(seasonAccount.variety.slice(0, seasonAccount.varietyLen)).toString("utf8")
                 : null,
             planned_practice: seasonAccount.plannedPracticeLen > 0
-                ? Buffer.from(seasonAccount.plannedPractice.slice(0, seasonAccount.plannedPracticeLen)).toString('utf8')
+                ? Buffer.from(seasonAccount.plannedPractice.slice(0, seasonAccount.plannedPracticeLen)).toString("utf8")
                 : null,
             planting_date: plantingDate,
             irrigation_practice: seasonAccount.irrigationPracticeLen > 0
-                ? Buffer.from(seasonAccount.irrigationPractice.slice(0, seasonAccount.irrigationPracticeLen)).toString('utf8')
+                ? Buffer.from(seasonAccount.irrigationPractice.slice(0, seasonAccount.irrigationPracticeLen)).toString("utf8")
                 : null,
             fertilizer_used: seasonAccount.fertilizerUsedLen > 0
-                ? Buffer.from(seasonAccount.fertilizerUsed.slice(0, seasonAccount.fertilizerUsedLen)).toString('utf8')
+                ? Buffer.from(seasonAccount.fertilizerUsed.slice(0, seasonAccount.fertilizerUsedLen)).toString("utf8")
                 : null,
             pesticide_used: seasonAccount.pesticideUsedLen > 0
-                ? Buffer.from(seasonAccount.pesticideUsed.slice(0, seasonAccount.pesticideUsedLen)).toString('utf8')
+                ? Buffer.from(seasonAccount.pesticideUsed.slice(0, seasonAccount.pesticideUsedLen)).toString("utf8")
                 : null,
             harvest_date: harvestDate,
             total_yield_kg: seasonAccount.totalYieldKg.toNumber() / 1000, // Convert grams back to kg
@@ -1879,11 +1897,11 @@ export const getSeasonFromSolana = async (seasonId) => {
             validation_status: validationStatusStr,
             validator_id: seasonAccount.validatorId.toString(),
             geotagging: seasonAccount.geotaggingLen > 0
-                ? Buffer.from(seasonAccount.geotagging.slice(0, seasonAccount.geotaggingLen)).toString('utf8')
+                ? Buffer.from(seasonAccount.geotagging.slice(0, seasonAccount.geotaggingLen)).toString("utf8")
                 : null,
             is_active: seasonAccount.isActive === 1,
             timestamp: seasonAccount.timestamp.toNumber(),
-            pda: seasonPDA.toBase58()
+            pda: seasonPDA.toBase58(),
         };
     }
     catch (err) {
@@ -1902,32 +1920,53 @@ export const updateSeasonOnSolana = async (seasonData) => {
     const [seasonPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("season"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(seasonIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
-    // Convert optional fields
+        Buffer.from(new BN(seasonIdBN).toArray("le", 4)), // season_id is u32
+    ], TRACING_PROGRAM_ID);
+    // Convert optional fields using sentinels
+    const U32_MAX = 4294967295;
+    const U16_MAX = 65535;
+    const MAX_U64 = new BN("18446744073709551615");
+    const MIN_I64 = new BN("-9223372036854775808");
     const seasonU8 = updateFields.season !== undefined
-        ? (updateFields.season === 'wet' ? 0 : updateFields.season === 'dry' ? 1 : null)
-        : null;
+        ? updateFields.season === "wet"
+            ? 0
+            : updateFields.season === "dry"
+                ? 1
+                : 255
+        : 255;
     const validationStatusU8 = updateFields.validation_status !== undefined
-        ? (updateFields.validation_status === 'pending' ? 0
-            : updateFields.validation_status === 'validated' ? 1
-                : updateFields.validation_status === 'rejected' ? 2
-                    : null)
-        : null;
+        ? updateFields.validation_status === "pending"
+            ? 0
+            : updateFields.validation_status === "validated"
+                ? 1
+                : updateFields.validation_status === "rejected"
+                    ? 2
+                    : 255
+        : 255;
+    const moistureNum = updateFields.moisture_content !== undefined
+        ? Math.floor(updateFields.moisture_content * 100)
+        : U16_MAX;
+    const validatorIdNum = updateFields.validator_id
+        ? new BN(String(updateFields.validator_id), 10).toNumber()
+        : U32_MAX;
     const plantingDateTimestamp = dateToUnixTimestamp(updateFields.planting_date);
     const harvestDateTimestamp = dateToUnixTimestamp(updateFields.harvest_date);
     const totalYieldInGrams = updateFields.total_yield_kg !== undefined
-        ? Math.floor(updateFields.total_yield_kg * 1000) : null;
+        ? Math.floor(updateFields.total_yield_kg * 1000)
+        : null;
     const processedYieldInGrams = updateFields.processed_yield_kg !== undefined
-        ? Math.floor(updateFields.processed_yield_kg * 1000) : null;
-    const moistureBasisPoints = updateFields.moisture_content !== undefined
-        ? Math.floor(updateFields.moisture_content * 100) : null;
+        ? Math.floor(updateFields.processed_yield_kg * 1000)
+        : null;
     const carbonSmartU8 = updateFields.carbon_smart_certified !== undefined
-        ? (updateFields.carbon_smart_certified ? 1 : 0) : null;
+        ? updateFields.carbon_smart_certified
+            ? 1
+            : 0
+        : 255;
     try {
-        if (!program.methods.updateSeason) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("updateSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.updateSeason) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("updateSeason method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify season exists
         const accountInfo = await connection.getAccountInfo(seasonPDA);
@@ -1935,30 +1974,19 @@ export const updateSeasonOnSolana = async (seasonData) => {
             throw new Error(`Season ${seasonIdBN.toString()} does not exist on Solana. Cannot update non-existent season.`);
         }
         console.log("Calling updateSeason with season_id:", seasonIdBN.toString());
-        // Use sentinel values instead of null to reduce stack usage
-        // Sentinels: u64::MAX = don't update, i64::MIN = don't update, 255 = don't update (u8), empty string = don't update
-        const MAX_U64 = new BN('18446744073709551615'); // u64::MAX
-        const MIN_I64 = new BN('-9223372036854775808'); // i64::MIN
-        const txSig = await program.methods
-            .updateSeason(seasonIdBN, updateFields.crop_year || "", // Empty string = don't update
-        seasonU8 !== null ? seasonU8 : 255, // 255 = don't update
-        updateFields.variety || "", // Empty string = don't update
-        updateFields.planned_practice || "", // Empty string = don't update
-        plantingDateTimestamp !== null ? new BN(plantingDateTimestamp, 10) : MIN_I64, // i64::MIN = don't update
-        updateFields.irrigation_practice || "", // Empty string = don't update
-        updateFields.fertilizer_used || "", // Empty string = don't update
-        updateFields.pesticide_used || "", // Empty string = don't update
-        harvestDateTimestamp !== null ? new BN(harvestDateTimestamp, 10) : MIN_I64, // i64::MIN = don't update
-        totalYieldInGrams !== null ? new BN(String(totalYieldInGrams), 10) : MAX_U64, // u64::MAX = don't update
-        processedYieldInGrams !== null ? new BN(String(processedYieldInGrams), 10) : MAX_U64, // u64::MAX = don't update
-        moistureBasisPoints !== null ? new BN(String(moistureBasisPoints), 10) : MAX_U64, // u64::MAX = don't update
-        carbonSmartU8 !== null ? carbonSmartU8 : 255, // 255 = don't update
-        validationStatusU8 !== null ? validationStatusU8 : 255, // 255 = don't update
-        updateFields.validator_id ? new BN(String(updateFields.validator_id), 10) : MAX_U64, // u64::MAX = don't update
-        updateFields.geotagging || "" // Empty string = don't update
-        )
+        const txSig = await tracingProgram.methods
+            .updateSeason(seasonIdBN.toNumber(), updateFields.crop_year || "", seasonU8, updateFields.variety || "", updateFields.planned_practice || "", plantingDateTimestamp !== null
+            ? new BN(plantingDateTimestamp, 10)
+            : MIN_I64, updateFields.irrigation_practice || "", updateFields.fertilizer_used || "", updateFields.pesticide_used || "", harvestDateTimestamp !== null
+            ? new BN(harvestDateTimestamp, 10)
+            : MIN_I64, totalYieldInGrams !== null
+            ? new BN(String(totalYieldInGrams), 10)
+            : MAX_U64, processedYieldInGrams !== null
+            ? new BN(String(processedYieldInGrams), 10)
+            : MAX_U64, moistureNum, carbonSmartU8, validationStatusU8, validatorIdNum, updateFields.geotagging || "")
             .accounts({
             season: seasonPDA,
+            bridgeConfig: bridgeConfigPDA,
             authority: wallet.publicKey,
         })
             .signers([feePayer])
@@ -1982,12 +2010,13 @@ export const deleteSeasonOnSolana = async (seasonData) => {
     const [seasonPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("season"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(seasonIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(seasonIdBN).toArray("le", 4)), // season_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.deleteSeason) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("deleteSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.deleteSeason) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("deleteSeason method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify season exists
         const accountInfo = await connection.getAccountInfo(seasonPDA);
@@ -1995,8 +2024,8 @@ export const deleteSeasonOnSolana = async (seasonData) => {
             throw new Error(`Season ${seasonIdBN.toString()} does not exist on Solana. Cannot delete non-existent season.`);
         }
         console.log("Calling deleteSeason with season_id:", seasonIdBN.toString());
-        const txSig = await program.methods
-            .deleteSeason(seasonIdBN)
+        const txSig = await tracingProgram.methods
+            .deleteSeason(seasonIdBN.toNumber())
             .accounts({
             season: seasonPDA,
             authority: wallet.publicKey,
@@ -2023,12 +2052,13 @@ export const closeSeasonOnSolana = async (seasonData) => {
     const [seasonPDA] = PublicKey.findProgramAddressSync([
         Buffer.from("season"),
         feePayer.publicKey.toBuffer(),
-        Buffer.from(seasonIdBN.toArray("le", 8)),
-    ], PROGRAM_ID);
+        Buffer.from(new BN(seasonIdBN).toArray("le", 4)), // season_id is u32
+    ], TRACING_PROGRAM_ID);
     try {
-        if (!program.methods.closeSeason) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("closeSeason method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.closeSeason) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("closeSeason method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         // Verify season exists
         const accountInfo = await connection.getAccountInfo(seasonPDA);
@@ -2037,8 +2067,8 @@ export const closeSeasonOnSolana = async (seasonData) => {
         }
         console.log("Calling closeSeason with season_id:", seasonIdBN.toString());
         console.log("WARNING: This will permanently delete the account and return rent");
-        const txSig = await program.methods
-            .closeSeason(seasonIdBN)
+        const txSig = await tracingProgram.methods
+            .closeSeason(seasonIdBN.toNumber())
             .accounts({
             season: seasonPDA,
             authority: wallet.publicKey,
@@ -2062,30 +2092,32 @@ export const closeSeasonOnSolana = async (seasonData) => {
  * @returns Transaction signature
  */
 export const initializeProgramOnSolana = async () => {
-    // PDA for config account (seeds: "config")
-    const [configPDA] = PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
+    // PDA for bridge_config account (seeds: "bridge_config")
+    // bridgeConfigPDA is already derived globally
     try {
         // Check if already initialized
-        const existingConfig = await connection.getAccountInfo(configPDA);
+        const existingConfig = await connection.getAccountInfo(bridgeConfigPDA);
         if (existingConfig !== null) {
-            throw new Error("Program is already initialized. Config account exists at: " + configPDA.toBase58());
+            throw new Error("Program is already initialized. Bridge config account exists at: " +
+                bridgeConfigPDA.toBase58());
         }
         // Verify the method exists
-        if (!program.methods.initializeProgram) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("initializeProgram method not found in program. IDL may need to be updated. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!coreProgram.methods.initializeBridgeConfig) {
+            console.error("Available methods:", Object.keys(coreProgram.methods));
+            throw new Error("initializeBridgeConfig method not found in program. IDL may need to be updated. Available methods: " +
+                Object.keys(coreProgram.methods).join(", "));
         }
         console.log("========================================");
-        console.log("INITIALIZING PROGRAM");
-        console.log("Config PDA:", configPDA.toBase58());
+        console.log("INITIALIZING PROGRAM CONFIG");
+        console.log("Bridge Config PDA:", bridgeConfigPDA.toBase58());
         console.log("Authority (Super Admin):", feePayer.publicKey.toBase58());
-        console.log("Program ID:", PROGRAM_ID.toBase58());
+        console.log("Program ID:", CORE_PROGRAM_ID.toBase58());
         console.log("========================================");
-        const txSig = await program.methods
-            .initializeProgram()
+        const txSig = await coreProgram.methods
+            .initializeBridgeConfig(feePayer.publicKey) // Pass bridge authority
             .accounts({
-            config: configPDA,
-            authority: wallet.publicKey,
+            bridgeConfig: bridgeConfigPDA,
+            payer: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
             .signers([feePayer])
@@ -2102,7 +2134,7 @@ export const initializeProgramOnSolana = async () => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         throw new Error(`Failed to initialize program: ${err.message || err.toString()}`);
     }
@@ -2112,58 +2144,56 @@ export const initializeProgramOnSolana = async () => {
  * @returns Object containing isInitialized, superAdmin, and initializedAt
  */
 export const getProgramConfig = async () => {
-    const [configPDA] = PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
+    // Using bridgeConfigPDA derived globally with 'bridge_config' seeds
     try {
-        const accountInfo = await connection.getAccountInfo(configPDA);
+        const accountInfo = await connection.getAccountInfo(bridgeConfigPDA);
         if (accountInfo === null) {
-            console.log("Program config account does not exist (not initialized)");
+            console.log("Bridge config account does not exist (not initialized)");
             return {
                 isInitialized: false,
                 superAdmin: null,
                 initializedAt: null,
-                configPda: configPDA.toBase58(),
+                configPda: bridgeConfigPDA.toBase58(),
             };
         }
         // Verify it's owned by our program
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
-            console.warn("Config account exists but is not owned by our program");
+        if (!accountInfo.owner.equals(CORE_PROGRAM_ID)) {
+            console.warn("Bridge config account exists but is not owned by our program");
             return {
                 isInitialized: false,
                 superAdmin: null,
                 initializedAt: null,
-                configPda: configPDA.toBase58(),
+                configPda: bridgeConfigPDA.toBase58(),
             };
         }
         // Fetch and decode the account data using Anchor
-        // Use type assertion since IDL types are loaded dynamically
         try {
-            const configAccount = await program.account.programConfig.fetch(configPDA);
-            console.log("Program config fetched successfully:", {
+            const configAccount = await coreProgram.account.bridgeConfig.fetch(bridgeConfigPDA);
+            console.log("Bridge config fetched successfully:", {
                 isInitialized: configAccount.isInitialized,
-                superAdmin: configAccount.superAdmin.toBase58(),
+                superAdmin: configAccount.bridgeAuthority.toBase58(),
                 initializedAt: configAccount.initializedAt.toNumber(),
             });
             return {
                 isInitialized: configAccount.isInitialized,
-                superAdmin: configAccount.superAdmin.toBase58(),
+                superAdmin: configAccount.bridgeAuthority.toBase58(),
                 initializedAt: configAccount.initializedAt.toNumber(),
-                configPda: configPDA.toBase58(),
+                configPda: bridgeConfigPDA.toBase58(),
             };
         }
         catch (decodeErr) {
-            console.error("Failed to decode config account:", decodeErr);
-            // Account exists but couldn't be decoded - might be corrupted or wrong structure
+            console.error("Failed to decode bridge config account:", decodeErr);
             return {
                 isInitialized: false,
                 superAdmin: null,
                 initializedAt: null,
-                configPda: configPDA.toBase58(),
+                configPda: bridgeConfigPDA.toBase58(),
             };
         }
     }
     catch (err) {
-        console.error("Error fetching program config:", err);
-        throw new Error(`Failed to fetch program config: ${err.message || err.toString()}`);
+        console.error("Error fetching bridge config:", err);
+        throw new Error(`Failed to fetch bridge config: ${err.message || err.toString()}`);
     }
 };
 /**
@@ -2180,57 +2210,8 @@ export const getFeePayerPublicKey = () => {
  * @returns Transaction signature
  */
 export const closeConfigOnSolana = async () => {
-    // PDA for config account (seeds: "config")
-    const [configPDA] = PublicKey.findProgramAddressSync([Buffer.from("config")], PROGRAM_ID);
-    try {
-        // Check if config exists
-        const existingConfig = await connection.getAccountInfo(configPDA);
-        if (existingConfig === null) {
-            throw new Error("Program config does not exist. Program is not initialized.");
-        }
-        // Verify caller is super_admin by fetching config
-        const config = await getProgramConfig();
-        if (!config.isInitialized) {
-            throw new Error("Program is not initialized.");
-        }
-        if (config.superAdmin !== feePayer.publicKey.toBase58()) {
-            throw new Error(`Unauthorized: Only the super_admin (${config.superAdmin}) can close the config. Current authority: ${feePayer.publicKey.toBase58()}`);
-        }
-        // Verify the method exists
-        if (!program.methods.closeConfig) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("closeConfig method not found in program. IDL may need to be updated.");
-        }
-        console.log("========================================");
-        console.log("CLOSING PROGRAM CONFIG (UN-INITIALIZING)");
-        console.log("Config PDA:", configPDA.toBase58());
-        console.log("Authority:", feePayer.publicKey.toBase58());
-        console.log("========================================");
-        const txSig = await program.methods
-            .closeConfig()
-            .accounts({
-            config: configPDA,
-            authority: wallet.publicKey,
-        })
-            .signers([feePayer])
-            .rpc();
-        console.log("========================================");
-        console.log("PROGRAM CONFIG CLOSED SUCCESSFULLY");
-        console.log("Transaction Signature:", txSig);
-        console.log("Program is now UN-INITIALIZED");
-        console.log("========================================");
-        return txSig;
-    }
-    catch (err) {
-        console.error("Close config failed:", err);
-        console.error("Error details:", {
-            message: err.message,
-            stack: err.stack,
-            name: err.name,
-            cause: err.cause
-        });
-        throw new Error(`Failed to close config: ${err.message || err.toString()}`);
-    }
+    // Note: The current core program does not support closing the bridge config
+    throw new Error("close_config instruction is not supported in the current program version.");
 };
 // ============================================
 // TRANSACTION MANAGEMENT
@@ -2244,16 +2225,16 @@ export const submitTransactionToSolana = async (transactionData) => {
     const { from_actor_id, to_actor_id, quantity, unit_price, payment_reference, nonce, batch_id, moisture, status, is_test, } = transactionData;
     // Validate required fields
     if (from_actor_id === undefined || from_actor_id === null) {
-        throw new Error('from_actor_id is required for transaction creation');
+        throw new Error("from_actor_id is required for transaction creation");
     }
     if (to_actor_id === undefined || to_actor_id === null) {
-        throw new Error('to_actor_id is required for transaction creation');
+        throw new Error("to_actor_id is required for transaction creation");
     }
     if (nonce === undefined || nonce === null) {
-        throw new Error('nonce is required for transaction creation');
+        throw new Error("nonce is required for transaction creation");
     }
     if (batch_id === undefined || batch_id === null) {
-        throw new Error('batch_id is required for transaction creation');
+        throw new Error("batch_id is required for transaction creation");
     }
     // Convert all IDs to BN (always use string to prevent precision loss)
     const fromActorIdBN = new BN(String(from_actor_id), 10);
@@ -2282,38 +2263,27 @@ export const submitTransactionToSolana = async (transactionData) => {
     if (isTestNum !== 0 && isTestNum !== 1) {
         throw new Error(`Invalid is_test: ${is_test}. Must be 0 or 1`);
     }
-    // Derive PDA using seeds: ["tx", authority, nonce]
-    let transactionPDA;
-    let bump;
+    // Derive PDAs
+    const [transactionPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("tx"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(new BN(nonceNum).toArray("le", 4)), // nonce is u32
+    ], TRACING_PROGRAM_ID);
+    const [fromActorPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("actor"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(fromActorIdBN.toArray("le", 8)), // Core actor_id is u64
+    ], CORE_PROGRAM_ID);
+    const [toActorPDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("actor"),
+        feePayer.publicKey.toBuffer(),
+        Buffer.from(toActorIdBN.toArray("le", 8)), // Core actor_id is u64
+    ], CORE_PROGRAM_ID);
     try {
-        [transactionPDA, bump] = PublicKey.findProgramAddressSync([
-            Buffer.from("tx"),
-            feePayer.publicKey.toBuffer(),
-            Buffer.from([nonceNum]), // nonce is u8, so single byte
-        ], PROGRAM_ID);
-        console.log("Transaction PDA Derivation:", {
-            nonce: nonceNum,
-            pda: transactionPDA.toBase58(),
-            bump: bump,
-        });
-        // Check if account already exists
-        const accountInfo = await connection.getAccountInfo(transactionPDA);
-        if (accountInfo !== null) {
-            throw new Error(`Transaction account already exists on Solana. ` +
-                `Nonce: ${nonceNum}, PDA: ${transactionPDA.toBase58()}. ` +
-                `This indicates a nonce collision or duplicate creation attempt.`);
-        }
-    }
-    catch (pdaErr) {
-        if (pdaErr.message?.includes('already exists')) {
-            throw pdaErr;
-        }
-        throw new Error(`Failed to derive PDA for nonce ${nonceNum}: ${pdaErr.message}`);
-    }
-    try {
-        if (!program.methods.createTransaction) {
-            console.error("Available methods:", Object.keys(program.methods));
-            throw new Error("createTransaction method not found in program. Available methods: " + Object.keys(program.methods).join(", "));
+        if (!tracingProgram.methods.createTransaction) {
+            console.error("Available methods:", Object.keys(tracingProgram.methods));
+            throw new Error("createTransaction method not found in program. Available methods: " +
+                Object.keys(tracingProgram.methods).join(", "));
         }
         console.log("Calling createTransaction with data:", {
             from_actor_id: fromActorIdBN.toString(),
@@ -2327,10 +2297,21 @@ export const submitTransactionToSolana = async (transactionData) => {
             status: statusNum,
             is_test: isTestNum,
         });
-        const txSig = await program.methods
-            .createTransaction(fromActorIdBN, toActorIdBN, quantityBN, unitPriceBN, paymentRefNum, nonceNum, batchIdBN, moistureBN, statusNum, isTestNum)
+        const txSig = await tracingProgram.methods
+            .createTransaction(fromActorIdBN.toNumber(), // tracing expects u32
+        toActorIdBN.toNumber(), // tracing expects u32
+        quantityBN.toNumber(), // tracing expects u32
+        unitPriceBN, // tracing expects u64
+        String(payment_reference || ""), nonceNum, // tracing expects u32
+        batchIdBN.toNumber(), // tracing expects u32
+        moistureBN.toNumber(), // tracing expects u16
+        statusNum, // tracing expects u8
+        isTestNum)
             .accounts({
             transaction: transactionPDA,
+            bridgeConfig: bridgeConfigPDA,
+            fromActor: fromActorPDA,
+            toActor: toActorPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -2345,10 +2326,11 @@ export const submitTransactionToSolana = async (transactionData) => {
             message: err.message,
             stack: err.stack,
             name: err.name,
-            cause: err.cause
+            cause: err.cause,
         });
         // Check for specific Anchor errors
-        if (err.message?.includes('assertion') || err.message?.includes('Assertion')) {
+        if (err.message?.includes("assertion") ||
+            err.message?.includes("Assertion")) {
             console.error("PDA Derivation Debug:", {
                 nonce: nonceNum,
                 calculated_pda: transactionPDA.toBase58(),
@@ -2378,7 +2360,7 @@ export const checkTransactionExistsOnSolana = async (nonce) => {
             Buffer.from("tx"),
             feePayer.publicKey.toBuffer(),
             Buffer.from([nonceNum]), // nonce is u8, single byte
-        ], PROGRAM_ID);
+        ], DISTRIBUTION_PROGRAM_ID);
         // Check if account exists
         const accountInfo = await connection.getAccountInfo(transactionPDA);
         if (accountInfo === null) {
@@ -2386,7 +2368,7 @@ export const checkTransactionExistsOnSolana = async (nonce) => {
             return false;
         }
         // Verify it's owned by our program
-        if (!accountInfo.owner.equals(PROGRAM_ID)) {
+        if (!accountInfo.owner.equals(DISTRIBUTION_PROGRAM_ID)) {
             console.warn(`Transaction with nonce ${nonceNum} account exists but is not owned by our program`);
             return false;
         }

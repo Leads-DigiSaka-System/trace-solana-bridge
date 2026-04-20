@@ -1,0 +1,1762 @@
+{
+  "address": "FqMZ32zmvBAWM8LXEojZrHG4K8qTSBRvJar3YWDbrZH4",
+  "metadata": {
+    "name": "distribution",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "DigiSaka distribution program – government distributions"
+  },
+  "instructions": [
+    {
+      "name": "add_checkpoint",
+      "docs": [
+        "Add a GPS checkpoint to a distribution.",
+        "PDA seeds: [b\"checkpoint\", authority, checkpoint_id]",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        19,
+        64,
+        146,
+        133,
+        55,
+        216,
+        49,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "checkpoint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  101,
+                  99,
+                  107,
+                  112,
+                  111,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "checkpoint_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "checkpoint_id",
+          "type": "u64"
+        },
+        {
+          "name": "distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "checkpoint_type",
+          "type": "u8"
+        },
+        {
+          "name": "location_name",
+          "type": "string"
+        },
+        {
+          "name": "gps_lat",
+          "type": "i64"
+        },
+        {
+          "name": "gps_lon",
+          "type": "i64"
+        },
+        {
+          "name": "recorded_by",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "close_checkpoint",
+      "docs": [
+        "Permanently close a checkpoint account and reclaim rent."
+      ],
+      "discriminator": [
+        143,
+        75,
+        76,
+        205,
+        209,
+        147,
+        175,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "checkpoint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  101,
+                  99,
+                  107,
+                  112,
+                  111,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "checkpoint_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "checkpoint_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "close_distribution",
+      "docs": [
+        "Permanently close a distribution account and reclaim rent.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        238,
+        70,
+        219,
+        176,
+        69,
+        243,
+        141,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "distribution_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "confirm_receipt",
+      "docs": [
+        "Confirm receipt of a delivery.",
+        "Transitions status: delivered(3) → confirmed(4).",
+        "Stores the recipient's 64-byte Ed25519 signature and signer metadata.",
+        "",
+        "NOTE FOR BRIDGE: For on-chain Ed25519 verification, the bridge must",
+        "include a Solana ed25519_program instruction in the SAME transaction,",
+        "immediately before this instruction. The program does NOT verify the",
+        "signature bytes here — it stores them for off-chain audit. If your",
+        "security model requires on-chain verification, add the",
+        "Instructions sysvar check here.",
+        "",
+        "Performance scoring is triggered automatically UNLESS from_org_type == FCA (3).",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        203,
+        36,
+        80,
+        115,
+        249,
+        12,
+        141,
+        170
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "performance",
+          "docs": [
+            "ActorPerformance for distribution.from_org_id.",
+            "Mutated only when from_org_type != FCA.",
+            "For FCA deliveries pass any existing account — it will not be written."
+          ],
+          "writable": true
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "recipient_signature",
+          "type": {
+            "array": [
+              "u8",
+              64
+            ]
+          }
+        },
+        {
+          "name": "signed_by_actor_id",
+          "type": "u64"
+        },
+        {
+          "name": "signer_role",
+          "type": "string"
+        },
+        {
+          "name": "signer_organization_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_actor_performance",
+      "docs": [
+        "Create an ActorPerformance record for an organization.",
+        "Must be called once per org before confirm_receipt can score it.",
+        "FCAs (org_type == 3) are rejected — they are excluded from scoring.",
+        "PDA seeds: [b\"perf\", authority, org_id]",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        47,
+        52,
+        222,
+        34,
+        88,
+        179,
+        219,
+        37
+      ],
+      "accounts": [
+        {
+          "name": "performance",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "org_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "org_id",
+          "type": "u64"
+        },
+        {
+          "name": "org_type",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "create_distribution",
+      "docs": [
+        "Create a new distribution record (first hop or standalone).",
+        "PDA seeds: [b\"dist\", authority, distribution_id]",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority.",
+        "C-3: from_org and to_org validated against Core.",
+        "",
+        "items is passed as a Vec<DistributionItem> (max 5 — truncated silently).",
+        "Set previous_distribution_id = 0 if this is the first hop in a chain.",
+        "chain_position = 1 for a standalone or first-hop delivery;",
+        "for subsequent hops, call link_to_chain after creation."
+      ],
+      "discriminator": [
+        237,
+        83,
+        162,
+        50,
+        49,
+        6,
+        28,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "from_org_authority"
+        },
+        {
+          "name": "from_org"
+        },
+        {
+          "name": "to_org_authority"
+        },
+        {
+          "name": "to_org"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "previous_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "from_org_id",
+          "type": "u64"
+        },
+        {
+          "name": "to_org_id",
+          "type": "u64"
+        },
+        {
+          "name": "items",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "DistributionItem"
+              }
+            }
+          }
+        },
+        {
+          "name": "warehouse_location",
+          "type": "string"
+        },
+        {
+          "name": "destination_location",
+          "type": "string"
+        },
+        {
+          "name": "gps_lat",
+          "type": "i64"
+        },
+        {
+          "name": "gps_lon",
+          "type": "i64"
+        },
+        {
+          "name": "expected_delivery_date",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "delete_checkpoint",
+      "docs": [
+        "Soft-delete a checkpoint.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        164,
+        87,
+        227,
+        173,
+        190,
+        189,
+        40,
+        75
+      ],
+      "accounts": [
+        {
+          "name": "checkpoint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  104,
+                  101,
+                  99,
+                  107,
+                  112,
+                  111,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "checkpoint_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_checkpoint_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "delete_distribution",
+      "docs": [
+        "Soft-delete a distribution record.",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        248,
+        153,
+        149,
+        167,
+        215,
+        204,
+        156,
+        149
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_distribution_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_bridge_config",
+      "docs": [
+        "Initialize the bridge authority config.",
+        "Must be called once by the deployer before any other instruction.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "discriminator": [
+        255,
+        120,
+        94,
+        187,
+        104,
+        236,
+        19,
+        13
+      ],
+      "accounts": [
+        {
+          "name": "bridge_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "bridge_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "link_to_chain",
+      "docs": [
+        "Link a distribution to the previous hop in a chain.",
+        "Sets:",
+        "current.previous_distribution_id = previous_id",
+        "current.chain_position           = previous.chain_position + 1",
+        "previous.next_distribution_id    = current_id",
+        "",
+        "Chain position is capped at MAX_CHAIN_POSITION (5).",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        50,
+        124,
+        193,
+        192,
+        189,
+        2,
+        133,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "current_distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "current_distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "previous_distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "previous_distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "current_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "_previous_distribution_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "record_delivery_performance",
+      "docs": [
+        "Standalone performance scoring instruction.",
+        "Allows the bridge to correct or backfill performance records.",
+        "Skipped automatically for FCA org_type — returns error if called on FCA.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        14,
+        129,
+        15,
+        59,
+        247,
+        151,
+        51,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "performance",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  102
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "org_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_org_id",
+          "type": "u64"
+        },
+        {
+          "name": "is_late",
+          "type": "u8"
+        },
+        {
+          "name": "delay_hours",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_bridge_authority",
+      "docs": [
+        "Transfer the bridge authority to a new wallet.",
+        "Only the current bridge_authority may call this."
+      ],
+      "discriminator": [
+        126,
+        176,
+        226,
+        17,
+        50,
+        68,
+        117,
+        193
+      ],
+      "accounts": [
+        {
+          "name": "bridge_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "update_delivery_status",
+      "docs": [
+        "Update the delivery status of a distribution.",
+        "Status transitions are forward-only:",
+        "allocated(0) → dispatched(1) → in_transit(2) → delivered(3)",
+        "confirmed(4) is set only by confirm_receipt.",
+        "",
+        "On status = delivered, late detection runs automatically:",
+        "if now > expected_delivery_date → is_late = 1, delay_hours calculated.",
+        "",
+        "GPS coordinates are updated on every call.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        109,
+        168,
+        36,
+        134,
+        144,
+        246,
+        63,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "new_status",
+          "type": "u8"
+        },
+        {
+          "name": "gps_lat",
+          "type": "i64"
+        },
+        {
+          "name": "gps_lon",
+          "type": "i64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ActorPerformance",
+      "discriminator": [
+        126,
+        105,
+        74,
+        177,
+        90,
+        207,
+        6,
+        19
+      ]
+    },
+    {
+      "name": "BridgeConfig",
+      "discriminator": [
+        40,
+        206,
+        51,
+        233,
+        246,
+        40,
+        178,
+        85
+      ]
+    },
+    {
+      "name": "DeliveryCheckpoint",
+      "discriminator": [
+        229,
+        193,
+        220,
+        245,
+        204,
+        162,
+        114,
+        204
+      ]
+    },
+    {
+      "name": "DistributionRecord",
+      "discriminator": [
+        28,
+        78,
+        148,
+        216,
+        131,
+        101,
+        91,
+        151
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: caller is not the bridge authority"
+    },
+    {
+      "code": 6001,
+      "name": "AlreadyInitialized",
+      "msg": "Bridge config has already been initialized"
+    },
+    {
+      "code": 6002,
+      "name": "OrgIdMismatch",
+      "msg": "Organization account does not match the expected org_id"
+    },
+    {
+      "code": 6003,
+      "name": "OrgNotOwnedByCore",
+      "msg": "Organization account is not owned by the Core program"
+    },
+    {
+      "code": 6004,
+      "name": "OrgNotActive",
+      "msg": "Organization account is not active"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidStatusTransition",
+      "msg": "Invalid status transition — forward-only transitions are enforced"
+    },
+    {
+      "code": 6006,
+      "name": "ChainPositionExceeded",
+      "msg": "Chain position exceeds maximum of 5 hops"
+    },
+    {
+      "code": 6007,
+      "name": "PerformanceOrgTypeExcluded",
+      "msg": "Performance scoring is not tracked for FCA organizations"
+    }
+  ],
+  "types": [
+    {
+      "name": "ActorPerformance",
+      "docs": [
+        "Supplier performance account — one per scored organization.",
+        "FCAs (org_type == 3) never get a performance account.",
+        "PDA seeds: [b\"perf\", authority, org_id]",
+        "",
+        "average_delay_hours is derived at read time:",
+        "average = total_delay_hours / late_deliveries",
+        "Storing the sum avoids floating-point drift from running averages."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "org_id",
+            "type": "u64"
+          },
+          {
+            "name": "org_type",
+            "type": "u8"
+          },
+          {
+            "name": "total_distributions",
+            "type": "u64"
+          },
+          {
+            "name": "on_time_deliveries",
+            "type": "u64"
+          },
+          {
+            "name": "late_deliveries",
+            "type": "u64"
+          },
+          {
+            "name": "total_delay_hours",
+            "type": "u64"
+          },
+          {
+            "name": "performance_score",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BridgeConfig",
+      "docs": [
+        "Stores the single bridge wallet authorised to sign all",
+        "state-mutating instructions in this program.",
+        "PDA seeds: [b\"bridge_config\"]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_initialized",
+            "type": "bool"
+          },
+          {
+            "name": "bridge_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "initialized_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DeliveryCheckpoint",
+      "docs": [
+        "GPS waypoint for a delivery.",
+        "PDA seeds: [b\"checkpoint\", authority, checkpoint_id]",
+        "",
+        "Checkpoints are discovered via MySQL (Laravel mirrors on-chain data).",
+        "There is no pointer from DistributionRecord to its checkpoints —",
+        "the distribution_id field here is the lookup key."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "checkpoint_id",
+            "type": "u64"
+          },
+          {
+            "name": "distribution_id",
+            "type": "u64"
+          },
+          {
+            "name": "checkpoint_type",
+            "type": "u8"
+          },
+          {
+            "name": "location_name",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "location_name_len",
+            "type": "u8"
+          },
+          {
+            "name": "gps_lat",
+            "type": "i64"
+          },
+          {
+            "name": "gps_lon",
+            "type": "i64"
+          },
+          {
+            "name": "recorded_at",
+            "type": "i64"
+          },
+          {
+            "name": "recorded_by",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DistributionItem",
+      "docs": [
+        "Embedded item struct — stored inside DistributionRecord as [DistributionItem; 5].",
+        "Not a PDA — uses AnchorSerialize/Deserialize for Borsh layout.",
+        "",
+        "Per-item size: 1+50+1+8+10+1+30+1+30+1+100+1 = 234 bytes",
+        "5 items × 234 bytes = 1170 bytes total in parent account."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "item_type",
+            "type": "u8"
+          },
+          {
+            "name": "item_name",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "item_name_len",
+            "type": "u8"
+          },
+          {
+            "name": "quantity",
+            "type": "u64"
+          },
+          {
+            "name": "unit",
+            "type": {
+              "array": [
+                "u8",
+                10
+              ]
+            }
+          },
+          {
+            "name": "unit_len",
+            "type": "u8"
+          },
+          {
+            "name": "variety",
+            "type": {
+              "array": [
+                "u8",
+                30
+              ]
+            }
+          },
+          {
+            "name": "variety_len",
+            "type": "u8"
+          },
+          {
+            "name": "serial_number",
+            "type": {
+              "array": [
+                "u8",
+                30
+              ]
+            }
+          },
+          {
+            "name": "serial_number_len",
+            "type": "u8"
+          },
+          {
+            "name": "supplier_origin",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "supplier_origin_len",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DistributionRecord",
+      "docs": [
+        "Distribution record — one hop in a 1-to-5 hop supply chain.",
+        "PDA seeds: [b\"dist\", authority, distribution_id]",
+        "",
+        "Chain traversal:",
+        "Forward: distribution → next_distribution_id",
+        "Backward: distribution → previous_distribution_id",
+        "",
+        "Consumer lookup walks backward from the most recent hop to hop 1."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "distribution_id",
+            "type": "u64"
+          },
+          {
+            "name": "chain_position",
+            "type": "u8"
+          },
+          {
+            "name": "previous_distribution_id",
+            "type": "u64"
+          },
+          {
+            "name": "next_distribution_id",
+            "type": "u64"
+          },
+          {
+            "name": "from_org_id",
+            "type": "u64"
+          },
+          {
+            "name": "from_org_type",
+            "type": "u8"
+          },
+          {
+            "name": "to_org_id",
+            "type": "u64"
+          },
+          {
+            "name": "to_org_type",
+            "type": "u8"
+          },
+          {
+            "name": "items",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "DistributionItem"
+                  }
+                },
+                5
+              ]
+            }
+          },
+          {
+            "name": "items_len",
+            "type": "u8"
+          },
+          {
+            "name": "warehouse_location",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "warehouse_location_len",
+            "type": "u8"
+          },
+          {
+            "name": "destination_location",
+            "type": {
+              "array": [
+                "u8",
+                100
+              ]
+            }
+          },
+          {
+            "name": "destination_location_len",
+            "type": "u8"
+          },
+          {
+            "name": "gps_lat",
+            "type": "i64"
+          },
+          {
+            "name": "gps_lon",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "allocated_at",
+            "type": "i64"
+          },
+          {
+            "name": "dispatched_at",
+            "type": "i64"
+          },
+          {
+            "name": "delivered_at",
+            "type": "i64"
+          },
+          {
+            "name": "confirmed_at",
+            "type": "i64"
+          },
+          {
+            "name": "expected_delivery_date",
+            "type": "i64"
+          },
+          {
+            "name": "is_late",
+            "type": "u8"
+          },
+          {
+            "name": "delay_hours",
+            "type": "u64"
+          },
+          {
+            "name": "recipient_signature",
+            "type": {
+              "array": [
+                "u8",
+                64
+              ]
+            }
+          },
+          {
+            "name": "signature_present",
+            "type": "u8"
+          },
+          {
+            "name": "signed_by_actor_id",
+            "type": "u64"
+          },
+          {
+            "name": "signer_role",
+            "type": {
+              "array": [
+                "u8",
+                30
+              ]
+            }
+          },
+          {
+            "name": "signer_role_len",
+            "type": "u8"
+          },
+          {
+            "name": "signer_organization_id",
+            "type": "u64"
+          },
+          {
+            "name": "signature_timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
