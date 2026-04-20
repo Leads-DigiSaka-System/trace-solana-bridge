@@ -8,6 +8,7 @@ import {
     tracingProgram,
     bridgeConfigPDA,
     TRACING_PROGRAM_ID,
+    CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
 import { validateAndConvertBatchId } from "../utils/solanaUtils.js";
 
@@ -29,7 +30,22 @@ export const submitBatchToSolana = async (batchData: any): Promise<string> => {
         status,
     } = batchData;
 
+    console.log(">>> submitBatchToSolana inputs:", {
+        batch_id,
+        qr_code,
+        season_id,
+        current_holder_id,
+        milling_id,
+        drying_id,
+        validator,
+        batch_weight_kg,
+        moisture_content,
+        price_per_kg,
+        status,
+    });
+
     const batchIdBN = validateAndConvertBatchId(batch_id, "creation");
+    console.log(">>> batchIdBN:", batchIdBN.toString());
 
     let batchPDA: PublicKey;
     try {
@@ -41,6 +57,7 @@ export const submitBatchToSolana = async (batchData: any): Promise<string> => {
             ],
             TRACING_PROGRAM_ID,
         );
+        console.log(">>> batchPDA:", batchPDA.toBase58());
 
         const accountInfo = await connection.getAccountInfo(batchPDA);
         if (accountInfo !== null) {
@@ -60,22 +77,43 @@ export const submitBatchToSolana = async (batchData: any): Promise<string> => {
             .createBatch(
                 batchIdBN,
                 qr_code || "",
-                new BN(String(season_id || 0), 10),
-                new BN(String(current_holder_id || 0), 10),
-                milling_id !== undefined
-                    ? new BN(String(milling_id), 10)
-                    : null,
-                drying_id !== undefined ? new BN(String(drying_id), 10) : null,
-                validator !== undefined ? new BN(String(validator), 10) : null,
-                new BN(String(batch_weight_kg || 0), 10),
-                new BN(String(moisture_content || 0), 10),
-                new BN(String(price_per_kg || 0), 10),
-                new BN(String(status || 0), 10).toNumber(),
+                season_id ? new BN(String(season_id), 10).toNumber() : 0,
+                current_holder_id
+                    ? new BN(String(current_holder_id), 10).toNumber()
+                    : 0,
+                milling_id !== undefined && milling_id !== null
+                    ? new BN(String(milling_id), 10).toNumber()
+                    : 0,
+                drying_id !== undefined && drying_id !== null
+                    ? new BN(String(drying_id), 10).toNumber()
+                    : 0,
+                validator !== undefined && validator !== null
+                    ? new BN(String(validator), 10).toNumber()
+                    : 0,
+                Math.round((batch_weight_kg || 0) * 1000), // kg to grams
+                Math.round((moisture_content || 0) * 100), // % to basis points
+                new BN(String(Math.round((price_per_kg || 0) * 100)), 10), // per kg price in cents
+                status === "for_sale"
+                    ? 0
+                    : status === "stock"
+                      ? 1
+                      : status === "consumed"
+                        ? 2
+                        : Number(status) || 0,
             )
             .accounts({
                 batch: batchPDA,
                 bridgeConfig: bridgeConfigPDA,
-                currentHolderActor: PublicKey.default, // Placeholder, should be derived if needed for validation
+                currentHolderActor: PublicKey.findProgramAddressSync(
+                    [
+                        Buffer.from("actor"),
+                        feePayer.publicKey.toBuffer(),
+                        Buffer.from(new BN(current_holder_id).toArray("le", 8)),
+                    ],
+                    new PublicKey(
+                        "9EmtNU2gHnfZV3388ncLcWZgLWP8eVnM476M9tawYL4Q",
+                    ),
+                )[0],
                 authority: wallet.publicKey,
                 systemProgram: SystemProgram.programId,
             })
