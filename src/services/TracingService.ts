@@ -70,6 +70,14 @@ export const submitDryingToSolana = async (
         .accounts({
             drying: dryingPDA,
             bridgeConfig: bridgeConfigPDA,
+            dryerActor: PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from("actor"),
+                    feePayer.publicKey.toBuffer(),
+                    Buffer.from(new BN(dryer_actor_id).toArray("le", 8)),
+                ],
+                CORE_PROGRAM_ID,
+            )[0],
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
@@ -285,6 +293,14 @@ export const submitMillingToSolana = async (
         .accounts({
             milling: millingPDA,
             bridgeConfig: bridgeConfigPDA,
+            millerActor: PublicKey.findProgramAddressSync(
+                [
+                    Buffer.from("actor"),
+                    feePayer.publicKey.toBuffer(),
+                    Buffer.from(new BN(miller_id).toArray("le", 8)),
+                ],
+                CORE_PROGRAM_ID,
+            )[0],
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })

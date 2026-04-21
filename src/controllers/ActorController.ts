@@ -8,6 +8,58 @@ import {
     closeActorOnSolana,
 } from "../services/ActorService.js";
 
+/**
+ * @openapi
+ * /actors:
+ *   post:
+ *     summary: Submit a new actor to Solana
+ *     tags: [Actors]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               actor_id:
+ *                 type: string
+ *               user_id:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               roles:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               organization:
+ *                 type: string
+ *               is_active:
+ *                 type: boolean
+ *               province:
+ *                 type: string
+ *               city:
+ *                 type: string
+ *               balance:
+ *                 type: number
+ *               address:
+ *                 type: string
+ *               farm_id:
+ *                 type: string
+ *               farmer_id:
+ *                 type: string
+ *               assigned_tps:
+ *                 type: string
+ *               farmer_signature_key:
+ *                 type: string
+ *     responses:
+ *       202:
+ *         description: Actor submission received
+ *       500:
+ *         description: Server error
+ */
 export const submitActor = async (req: Request, res: Response) => {
     try {
         const actorData = req.body;
@@ -23,6 +75,24 @@ export const submitActor = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * @openapi
+ * /actors/{actorId}/check:
+ *   get:
+ *     summary: Check if an actor exists on Solana
+ *     tags: [Actors]
+ *     parameters:
+ *       - in: path
+ *         name: actorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Existence status
+ *       500:
+ *         description: Server error
+ */
 export const checkActor = async (req: Request, res: Response) => {
     try {
         const actorIdParam = req.params.actorId;
@@ -52,6 +122,26 @@ export const checkActor = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * @openapi
+ * /actors/{actorId}:
+ *   get:
+ *     summary: Get actor details from Solana
+ *     tags: [Actors]
+ *     parameters:
+ *       - in: path
+ *         name: actorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Actor details
+ *       404:
+ *         description: Actor not found
+ *       500:
+ *         description: Server error
+ */
 export const getActor = async (req: Request, res: Response) => {
     try {
         const actorIdParam = req.params.actorId;
@@ -80,6 +170,38 @@ export const getActor = async (req: Request, res: Response) => {
     }
 };
 
+/**
+ * @openapi
+ * /actors:
+ *   put:
+ *     summary: Update an existing actor on Solana
+ *     tags: [Actors]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               actor_id:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               roles:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               is_active:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Actor updated
+ *       500:
+ *         description: Server error
+ */
 export const updateActor = async (req: Request, res: Response) => {
     try {
         const actorData = req.body;
