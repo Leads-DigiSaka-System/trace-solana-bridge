@@ -10,6 +10,33 @@ import {
     BUYBACK_PROGRAM_ID,
     CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
+import {
+    encrypt,
+    generateDataHash,
+    padBuffer,
+} from "../utils/encryptionUtils.js";
+
+// -----------------------------------------------------------------------
+// Max byte size for each encrypted field on-chain (IV 16 + ciphertext ≤ 80)
+// AES-256-CBC with PKCS7 pads up to the next 16-byte block.
+// Longest field we anticipate is ~64 chars → encrypted ≤ 80 bytes → 96 OK
+// -----------------------------------------------------------------------
+const ENCRYPTED_FIELD_SIZE = 96;
+
+/**
+ * Encrypt a string and pad to ENCRYPTED_FIELD_SIZE.
+ * Returns a zero-padded Buffer ready for on-chain storage.
+ */
+const encryptField = (value: string, keyHex: string): Buffer => {
+    if (!value) return Buffer.alloc(ENCRYPTED_FIELD_SIZE);
+    const encrypted = encrypt(value, keyHex);
+    if (encrypted.length > ENCRYPTED_FIELD_SIZE) {
+        throw new Error(
+            `Encrypted value too large: ${encrypted.length} bytes (max ${ENCRYPTED_FIELD_SIZE})`,
+        );
+    }
+    return padBuffer(encrypted, ENCRYPTED_FIELD_SIZE);
+};
 
 /**
  * Validate and convert buyback ID to BN
@@ -23,7 +50,16 @@ const validateBuybackId = (buybackId: string | number): BN => {
 };
 
 /**
- * Submit a new buyback to Solana
+ * Submit a new buyback to Solana with encrypted PII fields.
+ *
+ * Encrypted fields (AES-256-CBC, encrypted by bridge using key from backend):
+ *   - farmer_name
+ *   - bank_account
+ *   - bank_name
+ *   - exact_farm_gps
+ *
+ * The data_hash (SHA-256) is computed over these plaintext values for
+ * third-party verification without decryption.
  */
 export const submitBuybackToSolana = async (
     buybackData: any,
@@ -44,7 +80,22 @@ export const submitBuybackToSolana = async (
         staff_signature_key,
         farmer_authority, // Optional, defaults to feePayer
         provider_authority, // Optional, defaults to feePayer
+        // PII plaintext fields for encryption:
+        farmer_name,
+        bank_account,
+        bank_name,
+        exact_farm_gps,
+        // Encryption key (hex, 32 bytes) provided by backend:
+        encryption_key,
     } = buybackData;
+
+    // Validate encryption key if PII fields are present
+    const hasPii = farmer_name || bank_account || bank_name || exact_farm_gps;
+    if (hasPii && !encryption_key) {
+        throw new Error(
+            "encryption_key is required when PII fields are provided",
+        );
+    }
 
     const buybackIdBN = validateBuybackId(buyback_id);
     const farmerIdBN = new BN(String(farmer_id || 0), 10);
@@ -81,8 +132,6 @@ export const submitBuybackToSolana = async (
         CORE_PROGRAM_ID,
     );
 
-    // Provider can be an actor or organization. We check Organization seeds first then Actor.
-    // The program lib.rs says it checks both. We'll pass Organization PDA first as it's common for providers.
     const [providerAccountPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("organization"),
@@ -91,6 +140,33 @@ export const submitBuybackToSolana = async (
         ],
         CORE_PROGRAM_ID,
     );
+
+    // Encrypt PII fields with the provided key (empty buffer if no value)
+    const encryptedFarmerName = encryption_key
+        ? encryptField(farmer_name || "", encryption_key)
+        : Buffer.alloc(ENCRYPTED_FIELD_SIZE);
+
+    const encryptedBankAccount = encryption_key
+        ? encryptField(bank_account || "", encryption_key)
+        : Buffer.alloc(ENCRYPTED_FIELD_SIZE);
+
+    const encryptedBankName = encryption_key
+        ? encryptField(bank_name || "", encryption_key)
+        : Buffer.alloc(ENCRYPTED_FIELD_SIZE);
+
+    const encryptedExactFarmGps = encryption_key
+        ? encryptField(exact_farm_gps || "", encryption_key)
+        : Buffer.alloc(ENCRYPTED_FIELD_SIZE);
+
+    // Generate SHA-256 data hash from plaintext PII for on-chain verification
+    const dataHash = generateDataHash({
+        buyback_id: String(buyback_id),
+        farmer_name: farmer_name || "",
+        bank_account: bank_account || "",
+        bank_name: bank_name || "",
+        exact_farm_gps: exact_farm_gps || "",
+        rsbsa_number: String(rsbsa_number || ""),
+    });
 
     try {
         const txSig = await (buybackProgram.methods as any)
@@ -108,6 +184,13 @@ export const submitBuybackToSolana = async (
                 contract_pdf_key || "",
                 farmer_signature_key || "",
                 staff_signature_key || "",
+                // Encrypted PII
+                Array.from(encryptedFarmerName),
+                Array.from(encryptedBankAccount),
+                Array.from(encryptedBankName),
+                Array.from(encryptedExactFarmGps),
+                // Data hash
+                Array.from(dataHash),
             )
             .accounts({
                 buyback: buybackPDA,
@@ -152,7 +235,9 @@ export const checkBuybackExistsOnSolana = async (
 };
 
 /**
- * Get buyback details
+ * Get buyback details.
+ * Returns encrypted PII fields as hex strings — decryption happens on the
+ * frontend (or backend) after fetching the key from the backend API.
  */
 export const getBuybackFromSolana = async (
     buybackId: string | number,
@@ -186,6 +271,20 @@ export const getBuybackFromSolana = async (
             total_buyback_price: buybackAccount.totalBuybackPrice.toString(),
             target_payment_amount:
                 buybackAccount.targetPaymentAmount.toString(),
+            // Encrypted PII — returned as hex for authorized decryption
+            encrypted_farmer_name: Buffer.from(
+                buybackAccount.encryptedFarmerName,
+            ).toString("hex"),
+            encrypted_bank_account: Buffer.from(
+                buybackAccount.encryptedBankAccount,
+            ).toString("hex"),
+            encrypted_bank_name: Buffer.from(
+                buybackAccount.encryptedBankName,
+            ).toString("hex"),
+            encrypted_exact_farm_gps: Buffer.from(
+                buybackAccount.encryptedExactFarmGps,
+            ).toString("hex"),
+            data_hash: Buffer.from(buybackAccount.dataHash).toString("hex"),
             pda: buybackPDA.toBase58(),
         };
     } catch (err: any) {
@@ -202,7 +301,7 @@ export const updateInSeasonOnSolana = async (data: any): Promise<string> => {
     const forecastedYieldBN =
         forecasted_yield !== undefined
             ? new BN(String(forecasted_yield), 10)
-            : new BN("-1", 10); // Using -1 or max u64 for skip? lib.rs uses forecasted_yield != u64::MAX
+            : new BN("-1", 10);
 
     const [buybackPDA] = PublicKey.findProgramAddressSync(
         [
@@ -235,7 +334,7 @@ export const updateInSeasonOnSolana = async (data: any): Promise<string> => {
 };
 
 /**
- * Settle buyback
+ * Settle buyback - accepts an updated data_hash.
  */
 export const settleBuybackOnSolana = async (data: any): Promise<string> => {
     const {
@@ -250,6 +349,8 @@ export const settleBuybackOnSolana = async (data: any): Promise<string> => {
         contract_pdf_key,
         farmer_signature_key,
         staff_signature_key,
+        // Updated data hash (from backend, computed after any settlement PII updates)
+        data_hash,
     } = data;
 
     const buybackIdBN = validateBuybackId(buyback_id);
@@ -261,6 +362,17 @@ export const settleBuybackOnSolana = async (data: any): Promise<string> => {
         ],
         BUYBACK_PROGRAM_ID,
     );
+
+    // Accept data_hash as hex string or 32-byte array
+    let dataHashArray: number[];
+    if (data_hash) {
+        dataHashArray =
+            typeof data_hash === "string"
+                ? Array.from(Buffer.from(data_hash, "hex"))
+                : Array.from(data_hash);
+    } else {
+        dataHashArray = Array(32).fill(0);
+    }
 
     try {
         const txSig = await (buybackProgram.methods as any)
@@ -276,6 +388,7 @@ export const settleBuybackOnSolana = async (data: any): Promise<string> => {
                 contract_pdf_key || "",
                 farmer_signature_key || "",
                 staff_signature_key || "",
+                dataHashArray,
             )
             .accounts({
                 buyback: buybackPDA,

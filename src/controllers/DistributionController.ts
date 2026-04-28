@@ -127,13 +127,15 @@ export const recordDeliveryPerformance = async (
  */
 export const submitDistribution = async (req: Request, res: Response) => {
     try {
-        const txSig = await DistributionService.submitDistributionToSolana(
+        const result = await DistributionService.submitDistributionToSolana(
             req.body,
         );
         res.status(200).json({
             success: true,
             message: "Distribution submitted to Solana",
-            transaction_signature: txSig,
+            transaction_signature: result.transaction_signature,
+            merkle_root: result.merkle_root,
+            proofs: result.proofs,
         });
     } catch (err: any) {
         console.error("Error submitting distribution:", err);
