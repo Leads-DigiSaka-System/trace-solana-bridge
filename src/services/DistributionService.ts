@@ -145,11 +145,11 @@ export const submitDistributionToSolana = async (
     if (items && Array.isArray(items) && items.length > 0) {
         try {
             const tree = buildItemsMerkleTree(items);
-            merkleRoot = tree.root.toString("hex");
+            merkleRoot = tree.root!.toString("hex");
             proofs = items.map((_, index) => ({
                 index,
-                leaf_hash: tree.leafHashes[index].toString("hex"),
-                proof: generateProof(tree.layers, index),
+                leaf_hash: tree.leafHashes![index]!.toString("hex"),
+                proof: generateProof(tree.layers!, index),
             }));
             console.log(
                 `[MERKLE] Generated root for dist ${distribution_id}: ${merkleRoot}`,

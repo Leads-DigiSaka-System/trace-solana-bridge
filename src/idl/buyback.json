@@ -9,10 +9,6 @@
     "instructions": [
         {
             "name": "close_buyback",
-            "docs": [
-                "Permanently close a buyback account and reclaim rent.",
-                "C-1: authority must equal bridge_config.bridge_authority."
-            ],
             "discriminator": [98, 233, 163, 62, 120, 148, 53, 74],
             "accounts": [
                 {
@@ -64,10 +60,6 @@
         },
         {
             "name": "confirm_payment",
-            "docs": [
-                "Confirm payment for a settled buyback.",
-                "C-1: authority must equal bridge_config.bridge_authority."
-            ],
             "discriminator": [221, 23, 112, 126, 29, 23, 159, 223],
             "accounts": [
                 {
@@ -123,8 +115,10 @@
                 "Create a new buyback agreement.",
                 "PDA seeds: [b\"buyback\", authority, buyback_id]",
                 "",
-                "C-1: authority must equal bridge_config.bridge_authority.",
-                "C-3: farmer and provider PDAs are loaded from Core and validated."
+                "NOTE: input_details string is stored off-chain (Laravel DB).",
+                "Only a 64-byte hash/key reference is stored on-chain via",
+                "the existing contract_pdf_key field if needed.",
+                "risk_events reduced to 200 bytes (sufficient for ~3-4 events)."
             ],
             "discriminator": [156, 161, 20, 48, 99, 25, 129, 159],
             "accounts": [
@@ -166,10 +160,7 @@
                     "name": "farmer_authority"
                 },
                 {
-                    "name": "farmer_actor",
-                    "docs": [
-                        "CoreActorAccount off the try_accounts stack frame."
-                    ]
+                    "name": "farmer_actor"
                 },
                 {
                     "name": "provider_authority"
@@ -221,10 +212,6 @@
                     "type": "u64"
                 },
                 {
-                    "name": "input_details",
-                    "type": "string"
-                },
-                {
                     "name": "expected_harvest_kg",
                     "type": "u64"
                 },
@@ -241,33 +228,15 @@
                     "type": "string"
                 },
                 {
-                    "name": "encrypted_farmer_name",
-                    "type": "bytes"
-                },
-                {
-                    "name": "encrypted_bank_account",
-                    "type": "bytes"
-                },
-                {
-                    "name": "encrypted_bank_name",
-                    "type": "bytes"
-                },
-                {
-                    "name": "encrypted_exact_farm_gps",
-                    "type": "bytes"
-                },
-                {
                     "name": "data_hash",
-                    "type": { "array": ["u8", 32] }
+                    "type": {
+                        "array": ["u8", 32]
+                    }
                 }
             ]
         },
         {
             "name": "delete_buyback",
-            "docs": [
-                "Soft-delete (cancel) a buyback.",
-                "C-1: authority must equal bridge_config.bridge_authority."
-            ],
             "discriminator": [10, 255, 91, 102, 245, 46, 66, 50],
             "accounts": [
                 {
@@ -319,11 +288,6 @@
         },
         {
             "name": "initialize_bridge_config",
-            "docs": [
-                "Initialize the bridge authority config.",
-                "Must be called once by the deployer before any other instruction.",
-                "PDA seeds: [b\"bridge_config\"]"
-            ],
             "discriminator": [255, 120, 94, 187, 104, 236, 19, 13],
             "accounts": [
                 {
@@ -360,10 +324,6 @@
         },
         {
             "name": "mark_buyback_settled",
-            "docs": [
-                "Mark a to_settle or pay_later buyback as fully settled.",
-                "C-1: authority must equal bridge_config.bridge_authority."
-            ],
             "discriminator": [236, 116, 215, 102, 239, 210, 234, 191],
             "accounts": [
                 {
@@ -415,22 +375,7 @@
         },
         {
             "name": "settle_buyback",
-            "docs": [
-                "Settle a buyback agreement after harvest.",
-                "",
-                "C-1: authority must equal bridge_config.bridge_authority.",
-                "D-3: The on-chain total is derived fully from stored fields and",
-                "actual_harvest_kg.  total_price_signed must match within",
-                "PRICE_TOLERANCE_CENTS (10 cents) or the instruction fails.",
-                "",
-                "Formula (all amounts in cents):",
-                "raw_harvest  = (actual_harvest_kg * pm_market_price) / 1000",
-                "premium      = (actual_harvest_kg * premium_per_kg)  / 1000",
-                "expected_net = (raw_harvest + premium) - pb_borrowed_price",
-                "",
-                "total_price_signed > 0 → provider owes farmer",
-                "total_price_signed < 0 → farmer owes provider"
-            ],
+            "docs": ["Settle a buyback agreement after harvest."],
             "discriminator": [250, 32, 20, 144, 221, 187, 195, 0],
             "accounts": [
                 {
@@ -520,16 +465,14 @@
                 },
                 {
                     "name": "data_hash",
-                    "type": { "array": ["u8", 32] }
+                    "type": {
+                        "array": ["u8", 32]
+                    }
                 }
             ]
         },
         {
             "name": "update_bridge_authority",
-            "docs": [
-                "Transfer the bridge authority to a new wallet.",
-                "Only the current bridge_authority may call this."
-            ],
             "discriminator": [126, 176, 226, 17, 50, 68, 117, 193],
             "accounts": [
                 {
@@ -561,11 +504,7 @@
         },
         {
             "name": "update_in_season",
-            "docs": [
-                "Record in-season monitoring data (risk events, yield forecast, risk flag).",
-                "C-1: authority must equal bridge_config.bridge_authority.",
-                "M-4: inspection_count is now u16 — incremented with saturating_add."
-            ],
+            "docs": ["Record in-season monitoring data."],
             "discriminator": [12, 11, 67, 36, 2, 189, 192, 66],
             "accounts": [
                 {
@@ -629,10 +568,6 @@
         },
         {
             "name": "update_payment_schedule",
-            "docs": [
-                "Reschedule a pending payment date.",
-                "C-1: authority must equal bridge_config.bridge_authority."
-            ],
             "discriminator": [34, 56, 134, 31, 4, 78, 125, 212],
             "accounts": [
                 {
@@ -735,61 +670,71 @@
         },
         {
             "code": 6007,
+            "name": "SettlementBeforeAgreement",
+            "msg": "Settlement date cannot be earlier than agreement date"
+        },
+        {
+            "code": 6008,
+            "name": "InvalidTargetDate",
+            "msg": "Target payment date cannot be in the past"
+        },
+        {
+            "code": 6009,
             "name": "InvalidStatusTransition",
             "msg": "Invalid status transition — not allowed from current state"
         },
         {
-            "code": 6008,
+            "code": 6010,
             "name": "InvalidSettlementStatus",
             "msg": "Settlement status does not match financial outcome"
         },
         {
-            "code": 6009,
+            "code": 6011,
             "name": "InvalidStatusForScheduleUpdate",
             "msg": "Cannot update payment schedule for this status"
         },
         {
-            "code": 6010,
+            "code": 6012,
             "name": "BuybackFinalized",
             "msg": "Buyback is in a final state and cannot be modified"
         },
         {
-            "code": 6011,
+            "code": 6013,
             "name": "InvalidStatusValue",
             "msg": "Invalid status value"
         },
         {
-            "code": 6012,
+            "code": 6014,
             "name": "FarmerActorIdMismatch",
             "msg": "Farmer Core account does not match farmer_id"
         },
         {
-            "code": 6013,
+            "code": 6015,
             "name": "FarmerWrongActorType",
             "msg": "Farmer Core account is not actor_type farmer"
         },
         {
-            "code": 6014,
+            "code": 6016,
             "name": "FarmerNotActive",
             "msg": "Farmer Core account is not active"
         },
         {
-            "code": 6015,
+            "code": 6017,
             "name": "InvalidProviderAccount",
             "msg": "Provider account is not a valid Core organization or actor PDA"
         },
         {
-            "code": 6016,
+            "code": 6018,
             "name": "InvalidProviderOwner",
             "msg": "Provider account is not owned by the Core program"
         },
         {
-            "code": 6017,
+            "code": 6019,
             "name": "ProviderIdMismatch",
             "msg": "Provider Core account id does not match provider_id"
         },
         {
-            "code": 6018,
+            "code": 6020,
             "name": "ProviderNotActive",
             "msg": "Provider Core account is not active"
         }
@@ -797,11 +742,6 @@
     "types": [
         {
             "name": "BridgeConfig",
-            "docs": [
-                "Stores the single bridge wallet that is authorised to sign all",
-                "state-mutating instructions in this program.",
-                "PDA seeds: [b\"bridge_config\"]"
-            ],
             "type": {
                 "kind": "struct",
                 "fields": [
@@ -830,12 +770,11 @@
                 "Buyback agreement account.",
                 "PDA seeds: [b\"buyback\", authority, buyback_id]",
                 "",
-                "Changes vs original:",
-                "- inspection_count: u8  → u16   (M-4)",
-                "- risk_events: [u8;200] → [u8;500]  (M-4)",
-                "- risk_events_len: u8   → u16   (M-4, to index into 500-byte buffer)",
-                "- SPACE updated (+2 bytes inspection_count, +300 bytes risk_events,",
-                "+1 byte risk_events_len width)  = +303 bytes net"
+                "Size reduction vs previous version:",
+                "- input_details: [u8;500] REMOVED — stored in Laravel DB, not on-chain.",
+                "The contract_pdf_key field already references the off-chain agreement.",
+                "- risk_events: [u8;500] → [u8;200] — sufficient for ~3 events at ~60 chars each.",
+                "- SPACE reduced by ~800 bytes, bringing stack frame safely under 4KB."
             ],
             "type": {
                 "kind": "struct",
@@ -873,16 +812,6 @@
                         "type": "u64"
                     },
                     {
-                        "name": "input_details",
-                        "type": {
-                            "array": ["u8", 500]
-                        }
-                    },
-                    {
-                        "name": "input_details_len",
-                        "type": "u16"
-                    },
-                    {
                         "name": "expected_harvest_kg",
                         "type": "u64"
                     },
@@ -893,7 +822,7 @@
                     {
                         "name": "risk_events",
                         "type": {
-                            "array": ["u8", 500]
+                            "array": ["u8", 200]
                         }
                     },
                     {
@@ -1009,39 +938,10 @@
                         "type": "u8"
                     },
                     {
-                        "name": "encrypted_farmer_name",
-                        "docs": [
-                            "AES-256-CBC encrypted farmer full name (16-byte IV + ciphertext, zero-padded to 96)"
-                        ],
-                        "type": { "array": ["u8", 96] }
-                    },
-                    {
-                        "name": "encrypted_bank_account",
-                        "docs": [
-                            "AES-256-CBC encrypted bank account number (16-byte IV + ciphertext, zero-padded to 96)"
-                        ],
-                        "type": { "array": ["u8", 96] }
-                    },
-                    {
-                        "name": "encrypted_bank_name",
-                        "docs": [
-                            "AES-256-CBC encrypted bank name (16-byte IV + ciphertext, zero-padded to 96)"
-                        ],
-                        "type": { "array": ["u8", 96] }
-                    },
-                    {
-                        "name": "encrypted_exact_farm_gps",
-                        "docs": [
-                            "AES-256-CBC encrypted exact GPS coordinates (16-byte IV + ciphertext, zero-padded to 96)"
-                        ],
-                        "type": { "array": ["u8", 96] }
-                    },
-                    {
                         "name": "data_hash",
-                        "docs": [
-                            "SHA-256 of all sensitive plaintext fields for third-party verification"
-                        ],
-                        "type": { "array": ["u8", 32] }
+                        "type": {
+                            "array": ["u8", 32]
+                        }
                     }
                 ]
             }
