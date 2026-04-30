@@ -645,6 +645,15 @@
         {
           "name": "expected_delivery_date",
           "type": "i64"
+        },
+        {
+          "name": "items_merkle_root",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
         }
       ]
     },
@@ -1621,6 +1630,15 @@
           {
             "name": "to_org_type",
             "type": "u8"
+          },
+          {
+            "name": "items_merkle_root",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
             "name": "items",

@@ -1,5 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import {
+    ComputeBudgetProgram,
+    PublicKey,
+    sendAndConfirmTransaction,
+    SystemProgram,
+    Transaction,
+} from "@solana/web3.js";
 import BN from "bn.js";
 import {
     connection,
@@ -9,11 +15,30 @@ import {
     buybackBridgeConfigPDA,
     BUYBACK_PROGRAM_ID,
     CORE_PROGRAM_ID,
+    coreProgram,
+    bridgeConfigPDA,
 } from "../config/solanaConfig.js";
+import {
+    encrypt,
+    generateDataHash,
+    padBuffer,
+} from "../utils/encryptionUtils.js";
 
-/**
- * Validate and convert buyback ID to BN
- */
+const ENCRYPTED_FIELD_SIZE = 96;
+
+const encryptField = (value: string, keyHex: string): Buffer => {
+    if (!value) return Buffer.alloc(ENCRYPTED_FIELD_SIZE);
+    const encrypted = encrypt(value, keyHex);
+    if (encrypted.length > ENCRYPTED_FIELD_SIZE) {
+        throw new Error(
+            `Encrypted value too large: ${encrypted.length} bytes (max ${ENCRYPTED_FIELD_SIZE})`,
+        );
+    }
+    // Ensure padBuffer returns a true Buffer
+    const padded = padBuffer(encrypted, ENCRYPTED_FIELD_SIZE);
+    return Buffer.isBuffer(padded) ? padded : Buffer.from(padded);
+};
+
 const validateBuybackId = (buybackId: string | number): BN => {
     const id = typeof buybackId === "string" ? buybackId : String(buybackId);
     if (!id || isNaN(Number(id))) {
@@ -22,9 +47,109 @@ const validateBuybackId = (buybackId: string | number): BN => {
     return new BN(id, 10);
 };
 
+const toI64BN = (value: string | number | undefined, fallback = 0): BN => {
+    if (value === undefined || value === null || value === "") {
+        return new BN(fallback);
+    }
+    return new BN(String(value), 10);
+};
+
+const toTimestampBN = (value: string | number | undefined): BN => {
+    if (!value) return new BN(0);
+    if (typeof value === "number") return new BN(value);
+    if (typeof value === "string" && value.includes("-")) {
+        const ts = Math.floor(new Date(value).getTime() / 1000);
+        if (isNaN(ts)) throw new Error(`Invalid date string: ${value}`);
+        return new BN(ts);
+    }
+    return new BN(value, 10);
+};
+
 /**
- * Submit a new buyback to Solana
+ * For [u8; N] fixed-size Rust arrays — Anchor serializes WITHOUT a length prefix.
+ * Only use this for data_hash ([u8; 32]) and similar fixed arrays.
  */
+const toFixedArray = (buf: Buffer, size: number): number[] => {
+    const out = Buffer.alloc(size);
+    buf.copy(out, 0, 0, Math.min(buf.length, size));
+    return Array.from(out);
+};
+
+/**
+ * For Vec<u8> Rust fields — Anchor serializes WITH a 4-byte LE length prefix.
+ * Use Array.from() directly; Anchor's TypeScript client adds the prefix automatically
+ * when it sees a plain number[].
+ * The buffer must be exactly ENCRYPTED_FIELD_SIZE bytes (already padded by encryptField).
+ */
+const toBytesArray = (buf: Buffer): number[] => {
+    return Array.from(buf);
+};
+
+/**
+ * Ensure the provider is registered as an actor on-chain.
+ * The Rust program's validate_provider_core_account requires the provider PDA
+ * to be owned by the Core program.  We register a minimal actor account for
+ * the provider using just its numeric ID and the bridge fee-payer as authority.
+ * If the account already exists the call is a no-op.
+ */
+const ensureProviderActorExists = async (
+    providerIdBN: BN,
+    providerActorPDA: PublicKey,
+): Promise<void> => {
+    const accountInfo = await connection.getAccountInfo(providerActorPDA);
+    if (accountInfo !== null) {
+        // Already registered — nothing to do.
+        return;
+    }
+
+    try {
+        await (coreProgram.methods as any)
+            .createActor(
+                providerIdBN,          // actor_id (u64)
+                providerIdBN,          // user_id  — use same id as placeholder
+                "provider",            // name
+                0,                     // actor_type: 0 = farmer/generic
+                "provider",            // roles
+                null,                  // organization
+                1,                     // is_active
+                "",                    // province
+                "",                    // city
+                new BN(0),             // balance
+                "",                    // address
+                "",                    // farm_id
+                new BN(0),             // farmer_id
+                new BN(0),             // assigned_tps
+                "",                    // farmer_signature_key
+            )
+            .accounts({
+                actor: providerActorPDA,
+                bridgeConfig: bridgeConfigPDA,
+                authority: wallet.publicKey,
+                systemProgram: SystemProgram.programId,
+            })
+            .signers([feePayer])
+            .rpc();
+        console.log(
+            `[BuybackService] Provider actor registered on-chain: id=${
+                providerIdBN.toString()
+            } pda=${providerActorPDA.toBase58()}`,
+        );
+    } catch (err: any) {
+        // If it was created concurrently in a race, ignore the duplicate error.
+        if (
+            err?.message?.includes("already exists") ||
+            err?.message?.includes("already in use")
+        ) {
+            return;
+        }
+        throw new Error(
+            `Failed to auto-register provider actor ${
+                providerIdBN.toString()
+            }: ${err?.message ?? err}`,
+        );
+    }
+};
+
 export const submitBuybackToSolana = async (
     buybackData: any,
 ): Promise<string> => {
@@ -37,14 +162,26 @@ export const submitBuybackToSolana = async (
         farm_size_hectares,
         pb_borrowed_price,
         premium_per_kg,
-        input_details,
         expected_harvest_kg,
         contract_pdf_key,
         farmer_signature_key,
         staff_signature_key,
-        farmer_authority, // Optional, defaults to feePayer
-        provider_authority, // Optional, defaults to feePayer
+        farmer_authority,
+        provider_authority,
+        // PII fields — encrypt and store in DB only, not on-chain
+        farmer_name,
+        bank_account,
+        bank_name,
+        exact_farm_gps,
+        encryption_key,
     } = buybackData;
+
+    const hasPii = farmer_name || bank_account || bank_name || exact_farm_gps;
+    if (hasPii && !encryption_key) {
+        throw new Error(
+            "encryption_key is required when PII fields are provided",
+        );
+    }
 
     const buybackIdBN = validateBuybackId(buyback_id);
     const farmerIdBN = new BN(String(farmer_id || 0), 10);
@@ -81,9 +218,10 @@ export const submitBuybackToSolana = async (
         CORE_PROGRAM_ID,
     );
 
-    // Provider can be an actor or organization. We check Organization seeds first then Actor.
-    // The program lib.rs says it checks both. We'll pass Organization PDA first as it's common for providers.
-    const [providerAccountPDA] = PublicKey.findProgramAddressSync(
+    // The Rust program accepts either an "organization" or "actor" PDA for the
+    // provider account.  Try the organization PDA first; if it doesn't exist
+    // on-chain, fall back to the actor PDA.
+    const [providerOrgPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("organization"),
             pAuth.toBuffer(),
@@ -91,6 +229,40 @@ export const submitBuybackToSolana = async (
         ],
         CORE_PROGRAM_ID,
     );
+    const [providerActorPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("actor"),
+            pAuth.toBuffer(),
+            Buffer.from(providerIdBN.toArray("le", 8)),
+        ],
+        CORE_PROGRAM_ID,
+    );
+
+    const orgAccountInfo = await connection.getAccountInfo(providerOrgPDA);
+    const actorAccountInfo = orgAccountInfo
+        ? orgAccountInfo
+        : await connection.getAccountInfo(providerActorPDA);
+
+    // If neither PDA exists on-chain, auto-register the provider as an actor.
+    if (!actorAccountInfo) {
+        await ensureProviderActorExists(providerIdBN, providerActorPDA);
+    }
+
+    // Use whichever provider PDA exists (org takes priority, actor as fallback).
+    const providerAccountPDA = orgAccountInfo ? providerOrgPDA : providerActorPDA;
+
+    // Generate data_hash for on-chain integrity verification
+    const rawDataHash = generateDataHash({
+        buyback_id: String(buyback_id),
+        farmer_name: farmer_name || "",
+        bank_account: bank_account || "",
+        bank_name: bank_name || "",
+        exact_farm_gps: exact_farm_gps || "",
+        rsbsa_number: String(rsbsa_number || ""),
+    });
+    const dataHashBuf = Buffer.isBuffer(rawDataHash)
+        ? rawDataHash
+        : Buffer.from(rawDataHash);
 
     try {
         const txSig = await (buybackProgram.methods as any)
@@ -103,11 +275,11 @@ export const submitBuybackToSolana = async (
                 farmSizeBN,
                 borrowedPriceBN,
                 premiumBN,
-                input_details || "",
                 expectedHarvestBN,
                 contract_pdf_key || "",
                 farmer_signature_key || "",
                 staff_signature_key || "",
+                dataHashBuf,
             )
             .accounts({
                 buyback: buybackPDA,
@@ -121,16 +293,14 @@ export const submitBuybackToSolana = async (
             })
             .signers([feePayer])
             .rpc();
-
         return txSig;
     } catch (err: any) {
-        throw new Error(`Failed to create buyback: ${err.message}`);
+        const logs = err?.logs ?? [];
+        if (logs.length) console.error("Logs:", logs);
+        throw new Error(`Failed to create buyback: ${err?.message ?? err}`);
     }
 };
 
-/**
- * Check if buyback exists
- */
 export const checkBuybackExistsOnSolana = async (
     buybackId: string | number,
 ): Promise<any> => {
@@ -151,9 +321,6 @@ export const checkBuybackExistsOnSolana = async (
     };
 };
 
-/**
- * Get buyback details
- */
 export const getBuybackFromSolana = async (
     buybackId: string | number,
 ): Promise<any> => {
@@ -186,6 +353,19 @@ export const getBuybackFromSolana = async (
             total_buyback_price: buybackAccount.totalBuybackPrice.toString(),
             target_payment_amount:
                 buybackAccount.targetPaymentAmount.toString(),
+            encrypted_farmer_name: Buffer.from(
+                buybackAccount.encryptedFarmerName,
+            ).toString("hex"),
+            encrypted_bank_account: Buffer.from(
+                buybackAccount.encryptedBankAccount,
+            ).toString("hex"),
+            encrypted_bank_name: Buffer.from(
+                buybackAccount.encryptedBankName,
+            ).toString("hex"),
+            encrypted_exact_farm_gps: Buffer.from(
+                buybackAccount.encryptedExactFarmGps,
+            ).toString("hex"),
+            data_hash: Buffer.from(buybackAccount.dataHash).toString("hex"),
             pda: buybackPDA.toBase58(),
         };
     } catch (err: any) {
@@ -193,16 +373,15 @@ export const getBuybackFromSolana = async (
     }
 };
 
-/**
- * Update in-season monitoring
- */
 export const updateInSeasonOnSolana = async (data: any): Promise<string> => {
     const { buyback_id, risk_event, forecasted_yield, major_risk_flag } = data;
     const buybackIdBN = validateBuybackId(buyback_id);
+
+    // u64 cannot be negative — use 0 as sentinel instead of -1
     const forecastedYieldBN =
-        forecasted_yield !== undefined
+        forecasted_yield !== undefined && forecasted_yield !== null
             ? new BN(String(forecasted_yield), 10)
-            : new BN("-1", 10); // Using -1 or max u64 for skip? lib.rs uses forecasted_yield != u64::MAX
+            : new BN(0);
 
     const [buybackPDA] = PublicKey.findProgramAddressSync(
         [
@@ -234,9 +413,6 @@ export const updateInSeasonOnSolana = async (data: any): Promise<string> => {
     }
 };
 
-/**
- * Settle buyback
- */
 export const settleBuybackOnSolana = async (data: any): Promise<string> => {
     const {
         buyback_id,
@@ -250,6 +426,7 @@ export const settleBuybackOnSolana = async (data: any): Promise<string> => {
         contract_pdf_key,
         farmer_signature_key,
         staff_signature_key,
+        data_hash,
     } = data;
 
     const buybackIdBN = validateBuybackId(buyback_id);
@@ -262,20 +439,33 @@ export const settleBuybackOnSolana = async (data: any): Promise<string> => {
         BUYBACK_PROGRAM_ID,
     );
 
+    // data_hash is [u8; 32] fixed array in Rust → toFixedArray
+    let dataHashArray: number[];
+    if (data_hash) {
+        const buf =
+            typeof data_hash === "string"
+                ? Buffer.from(data_hash, "hex")
+                : Buffer.from(data_hash);
+        dataHashArray = toFixedArray(buf, 32);
+    } else {
+        dataHashArray = Array(32).fill(0);
+    }
+
     try {
         const txSig = await (buybackProgram.methods as any)
             .settleBuyback(
                 buybackIdBN,
-                new BN(String(actual_harvest_kg), 10),
-                new BN(String(pm_market_price), 10),
+                new BN(String(actual_harvest_kg || 0), 10),
+                new BN(String(pm_market_price || 0), 10),
                 check_number || "",
-                new BN(String(check_date || 0), 10),
+                toTimestampBN(check_date),
                 new_status,
-                new BN(String(target_payment_date || 0), 10),
-                new BN(String(total_price_signed), 10),
+                toTimestampBN(target_payment_date),
+                toI64BN(total_price_signed),
                 contract_pdf_key || "",
                 farmer_signature_key || "",
                 staff_signature_key || "",
+                dataHashArray,
             )
             .accounts({
                 buyback: buybackPDA,
@@ -290,9 +480,6 @@ export const settleBuybackOnSolana = async (data: any): Promise<string> => {
     }
 };
 
-/**
- * Confirm payment
- */
 export const confirmBuybackPaymentOnSolana = async (
     buybackId: string | number,
 ): Promise<string> => {
@@ -322,14 +509,13 @@ export const confirmBuybackPaymentOnSolana = async (
     }
 };
 
-/**
- * Update payment schedule
- */
 export const updatePaymentScheduleOnSolana = async (
     buybackId: string | number,
-    targetPaymentDate: number,
+    targetPaymentDate: string | number,
 ): Promise<string> => {
     const buybackIdBN = validateBuybackId(buybackId);
+    const targetDateBN = toTimestampBN(targetPaymentDate);
+
     const [buybackPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("buyback"),
@@ -341,10 +527,7 @@ export const updatePaymentScheduleOnSolana = async (
 
     try {
         const txSig = await (buybackProgram.methods as any)
-            .updatePaymentSchedule(
-                buybackIdBN,
-                new BN(String(targetPaymentDate), 10),
-            )
+            .updatePaymentSchedule(buybackIdBN, targetDateBN)
             .accounts({
                 buyback: buybackPDA,
                 bridgeConfig: buybackBridgeConfigPDA,
@@ -358,9 +541,6 @@ export const updatePaymentScheduleOnSolana = async (
     }
 };
 
-/**
- * Mark buyback settled
- */
 export const markBuybackSettledOnSolana = async (
     buybackId: string | number,
 ): Promise<string> => {
@@ -390,9 +570,6 @@ export const markBuybackSettledOnSolana = async (
     }
 };
 
-/**
- * Delete buyback
- */
 export const deleteBuybackOnSolana = async (
     buybackId: string | number,
 ): Promise<string> => {
@@ -422,9 +599,6 @@ export const deleteBuybackOnSolana = async (
     }
 };
 
-/**
- * Close buyback account
- */
 export const closeBuybackOnSolana = async (
     buybackId: string | number,
 ): Promise<string> => {

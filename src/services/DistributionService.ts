@@ -9,6 +9,7 @@ import {
     DISTRIBUTION_PROGRAM_ID,
     CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
+import { buildItemsMerkleTree, generateProof } from "../utils/merkle.js";
 
 /**
  * Submit actor performance (Distribution program)
@@ -81,40 +82,120 @@ export const recordDeliveryPerformanceToSolana = async (
 };
 
 /**
- * Submit distribution
+ * Create a new distribution record (Distribution program)
+ * Aligned with create_distribution instruction in IDL.
  */
 export const submitDistributionToSolana = async (
     data: any,
-): Promise<string> => {
-    const { distribution_id, batch_id, sender_id, receiver_id, status } = data;
-    const distIdBN = new BN(String(distribution_id), 10);
-    const batchIdBN = new BN(String(batch_id), 10);
-    const senderIdBN = new BN(String(sender_id), 10);
-    const receiverIdBN = new BN(String(receiver_id), 10);
+): Promise<{
+    transaction_signature: string;
+    merkle_root: string | null;
+    proofs: any[];
+}> => {
+    const {
+        distribution_id,
+        previous_distribution_id,
+        from_org_id,
+        to_org_id,
+        items,
+        warehouse_location,
+        destination_location,
+        gps_lat,
+        gps_lon,
+        expected_delivery_date,
+    } = data;
 
+    const distIdBN = new BN(String(distribution_id || 0), 10);
+    const prevDistIdBN = new BN(String(previous_distribution_id || 0), 10);
+    const fromOrgIdBN = new BN(String(from_org_id || 0), 10);
+    const toOrgIdBN = new BN(String(to_org_id || 0), 10);
+
+    // Derive Distribution PDA: [b"dist", authority, distribution_id]
     const [distPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("distribution"), Buffer.from(distIdBN.toArray("le", 8))],
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
+    // Derive Org PDAs: [b"organization", authority, org_id]
+    const [fromOrgPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("organization"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(fromOrgIdBN.toArray("le", 8)),
+        ],
+        CORE_PROGRAM_ID,
+    );
+
+    const [toOrgPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("organization"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(toOrgIdBN.toArray("le", 8)),
+        ],
+        CORE_PROGRAM_ID,
+    );
+
+    // Compute Merkle Root if items are provided
+    let merkleRoot = null;
+    let proofs: any[] = [];
+    if (items && Array.isArray(items) && items.length > 0) {
+        try {
+            const tree = buildItemsMerkleTree(items);
+            merkleRoot = tree.root!.toString("hex");
+            proofs = items.map((_, index) => ({
+                index,
+                leaf_hash: tree.leafHashes![index]!.toString("hex"),
+                proof: generateProof(tree.layers!, index),
+            }));
+            console.log(
+                `[MERKLE] Generated root for dist ${distribution_id}: ${merkleRoot}`,
+            );
+        } catch (err) {
+            console.error(
+                `[MERKLE] Error generating tree for dist ${distribution_id}:`,
+                err,
+            );
+        }
+    }
+
     const txSig = await (distributionProgram.methods as any)
-        .submitDistribution(
+        .createDistribution(
             distIdBN,
-            batchIdBN,
-            senderIdBN,
-            receiverIdBN,
-            parseInt(String(status || 0), 10),
+            prevDistIdBN,
+            fromOrgIdBN,
+            toOrgIdBN,
+            items || [],
+            warehouse_location || "",
+            destination_location || "",
+            new BN(String(gps_lat || 0), 10),
+            new BN(String(gps_lon || 0), 10),
+            new BN(String(expected_delivery_date || 0), 10),
+            merkleRoot
+                ? Array.from(Buffer.from(merkleRoot, "hex"))
+                : new Array(32).fill(0),
         )
         .accounts({
             distribution: distPDA,
             bridgeConfig: distributionBridgeConfigPDA,
+            fromOrgAuthority: wallet.publicKey,
+            fromOrg: fromOrgPDA,
+            toOrgAuthority: wallet.publicKey,
+            toOrg: toOrgPDA,
             authority: wallet.publicKey,
             systemProgram: SystemProgram.programId,
         })
         .signers([feePayer])
         .rpc();
 
-    return txSig;
+    return {
+        transaction_signature: txSig,
+        merkle_root: merkleRoot,
+        proofs: proofs,
+    };
 };
 
 /**
