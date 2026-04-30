@@ -65,6 +65,6 @@ app.use("/api/v1", apiRoutes);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // --- SERVER START ---
 app.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
+    console.log(`Server is listening on port... ${PORT}`);
 });
 //# sourceMappingURL=server.js.map
