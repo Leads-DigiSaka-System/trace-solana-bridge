@@ -105,10 +105,10 @@ export const submitDistributionToSolana = async (
         expected_delivery_date,
     } = data;
 
-    const distIdBN = new BN(String(distribution_id || 0), 10);
-    const prevDistIdBN = new BN(String(previous_distribution_id || 0), 10);
-    const fromOrgIdBN = new BN(String(from_org_id || 0), 10);
-    const toOrgIdBN = new BN(String(to_org_id || 0), 10);
+    const distIdBN = new BN(String(distribution_id ?? 0), 10);
+    const prevDistIdBN = new BN(String(previous_distribution_id ?? 0), 10);
+    const fromOrgIdBN = new BN(String(from_org_id ?? 0), 10);
+    const toOrgIdBN = new BN(String(to_org_id ?? 0), 10);
 
     // Derive Distribution PDA: [b"dist", authority, distribution_id]
     const [distPDA] = PublicKey.findProgramAddressSync(
@@ -168,7 +168,7 @@ export const submitDistributionToSolana = async (
             prevDistIdBN,
             fromOrgIdBN,
             toOrgIdBN,
-            items || [],
+            transformItems(items),
             warehouse_location || "",
             destination_location || "",
             new BN(String(gps_lat || 0), 10),
@@ -197,6 +197,44 @@ export const submitDistributionToSolana = async (
         proofs: proofs,
     };
 };
+
+/**
+ * Helper to pad strings and convert to byte arrays for Solana fixed-length fields
+ */
+function padStringToBytes(str: string, length: number): number[] {
+    const bytes = new Uint8Array(length);
+    const strBytes = Buffer.from(str, "utf8");
+    bytes.set(strBytes.slice(0, length));
+    return Array.from(bytes);
+}
+
+/**
+ * Transforms raw item data into the format expected by the Solana program
+ */
+function transformItems(items: any[]): any[] {
+    return (items || []).slice(0, 5).map((item) => {
+        const itemName = (item.item_name || "").slice(0, 50);
+        const unit = (item.unit || "").slice(0, 10);
+        const variety = (item.variety || "").slice(0, 30);
+        const serialNumber = (item.serial_number || "").slice(0, 30);
+        const supplierOrigin = (item.supplier_origin || "").slice(0, 100);
+
+        return {
+            itemType: new BN(item.item_type || 0),
+            itemName: padStringToBytes(itemName, 50),
+            itemNameLen: new BN(itemName.length),
+            quantity: new BN(String(item.quantity || 0), 10),
+            unit: padStringToBytes(unit, 10),
+            unitLen: new BN(unit.length),
+            variety: padStringToBytes(variety, 30),
+            varietyLen: new BN(variety.length),
+            serialNumber: padStringToBytes(serialNumber, 30),
+            serialNumberLen: new BN(serialNumber.length),
+            supplierOrigin: padStringToBytes(supplierOrigin, 100),
+            supplierOriginLen: new BN(supplierOrigin.length),
+        };
+    });
+}
 
 /**
  * Update delivery status
