@@ -121,7 +121,11 @@ export function buildItemsMerkleTree(items: DistributionItem[]) {
     );
 
     if (leafHashes.length === 0) {
-        return { root: Buffer.alloc(32), layers: [] };
+        return {
+            root: Buffer.alloc(32),
+            layers: [] as Buffer[][],
+            leafHashes: [] as Buffer[],
+        };
     }
 
     let currentLayer = leafHashes;
@@ -130,9 +134,9 @@ export function buildItemsMerkleTree(items: DistributionItem[]) {
     while (currentLayer.length > 1) {
         const nextLayer: Buffer[] = [];
         for (let i = 0; i < currentLayer.length; i += 2) {
-            const left = currentLayer[i];
+            const left = currentLayer[i]!;
             const right =
-                i + 1 < currentLayer.length ? currentLayer[i + 1] : left; // Duplicate last leaf if odd
+                i + 1 < currentLayer.length ? currentLayer[i + 1]! : left; // Duplicate last leaf if odd
             nextLayer.push(hashNodes(left, right));
         }
         currentLayer = nextLayer;
@@ -140,7 +144,7 @@ export function buildItemsMerkleTree(items: DistributionItem[]) {
     }
 
     return {
-        root: currentLayer[0],
+        root: currentLayer[0]!,
         layers: layers,
         leafHashes: leafHashes,
     };
@@ -154,19 +158,19 @@ export function generateProof(layers: Buffer[][], index: number) {
     let currentIndex = index;
 
     for (let i = 0; i < layers.length - 1; i++) {
-        const layer = layers[i];
+        const layer = layers[i]!;
         const isRight = currentIndex % 2 === 1;
         const siblingIndex = isRight ? currentIndex - 1 : currentIndex + 1;
 
         if (siblingIndex < layer.length) {
             proof.push({
-                sibling: layer[siblingIndex].toString("hex"),
+                sibling: layer[siblingIndex]!.toString("hex"),
                 isLeft: isRight,
             });
         } else {
             // Duplicate self (standard approach for odd-numbered trees)
             proof.push({
-                sibling: layer[currentIndex].toString("hex"),
+                sibling: layer[currentIndex]!.toString("hex"),
                 isLeft: isRight,
             });
         }

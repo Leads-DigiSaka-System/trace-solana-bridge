@@ -60,8 +60,17 @@ export const submitBuyback = async (req: Request, res: Response) => {
             transactionId: txId,
         });
     } catch (error: any) {
-        console.error("Solana Buyback Submission Error:", error.message);
-        res.status(500).json({ success: false, error: error.message });
+        const message = error?.message ?? String(error);
+        // Strip circular refs — pull out only what you need
+        const solanaLogs = error?.logs ?? [];
+        console.error("Solana Buyback Submission Error:", message);
+        if (solanaLogs.length) console.error("Logs:", solanaLogs);
+
+        res.status(500).json({
+            ok: false,
+            error: message,
+            logs: solanaLogs,
+        });
     }
 };
 
