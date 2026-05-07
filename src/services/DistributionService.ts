@@ -21,7 +21,11 @@ export const submitActorPerformanceToSolana = async (
     const actorIdBN = new BN(String(actor_id), 10);
 
     const [performancePDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("performance"), Buffer.from(actorIdBN.toArray("le", 8))],
+        [
+            Buffer.from("perf"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(actorIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
@@ -35,11 +39,10 @@ export const submitActorPerformanceToSolana = async (
     );
 
     const txSig = await (distributionProgram.methods as any)
-        .submitActorPerformance(
+        .recordDeliveryPerformance(
             actorIdBN,
-            new BN(String(performance_score || 0), 10).toNumber(),
-            new BN(String(reports_count || 0), 10).toNumber(),
-            new BN(String(delivery_count || 0), 10).toNumber(),
+            (performance_score || 0) < 100 ? 0 : 1, // Example logic for late
+            new BN(String(reports_count || 0), 10)
         )
         .accounts({
             performance: performancePDA,
@@ -60,16 +63,24 @@ export const submitActorPerformanceToSolana = async (
 export const recordDeliveryPerformanceToSolana = async (
     data: any,
 ): Promise<string> => {
-    const { actor_id, on_time } = data;
+    const { actor_id, on_time, delay_hours } = data;
     const actorIdBN = new BN(String(actor_id), 10);
 
     const [performancePDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("performance"), Buffer.from(actorIdBN.toArray("le", 8))],
+        [
+            Buffer.from("perf"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(actorIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
     const txSig = await (distributionProgram.methods as any)
-        .recordDeliveryPerformance(actorIdBN, on_time === 1)
+        .recordDeliveryPerformance(
+            actorIdBN,
+            on_time === 1 || on_time === true ? 0 : 1, // is_late (0=false, 1=true)
+            new BN(String(delay_hours || 0), 10)
+        )
         .accounts({
             performance: performancePDA,
             bridgeConfig: distributionBridgeConfigPDA,
@@ -242,16 +253,25 @@ function transformItems(items: any[]): any[] {
 export const updateDeliveryStatusToSolana = async (
     data: any,
 ): Promise<string> => {
-    const { distribution_id, status } = data;
+    const { distribution_id, status, gps_lat, gps_lon } = data;
     const distIdBN = new BN(String(distribution_id), 10);
 
     const [distPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("distribution"), Buffer.from(distIdBN.toArray("le", 8))],
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
     const txSig = await (distributionProgram.methods as any)
-        .updateDeliveryStatus(distIdBN, parseInt(String(status || 0), 10))
+        .updateDeliveryStatus(
+            distIdBN,
+            parseInt(String(status || 0), 10),
+            new BN(String(gps_lat || 0), 10),
+            new BN(String(gps_lon || 0), 10)
+        )
         .accounts({
             distribution: distPDA,
             bridgeConfig: distributionBridgeConfigPDA,
@@ -267,18 +287,75 @@ export const updateDeliveryStatusToSolana = async (
  * Confirm receipt
  */
 export const confirmReceiptToSolana = async (data: any): Promise<string> => {
-    const { distribution_id } = data;
+    const {
+        distribution_id,
+        from_org_id,
+        from_org_type,
+        recipient_signature,
+        signed_by_actor_id,
+        signer_role,
+        signer_organization_id,
+    } = data;
     const distIdBN = new BN(String(distribution_id), 10);
+    const fromOrgIdBN = new BN(String(from_org_id || 0), 10);
+    const fromOrgType = parseInt(String(from_org_type || 0), 10);
 
     const [distPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("distribution"), Buffer.from(distIdBN.toArray("le", 8))],
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
+    const [performancePDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("perf"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(fromOrgIdBN.toArray("le", 8)),
+        ],
+        DISTRIBUTION_PROGRAM_ID,
+    );
+
+    // Check if performance account exists, initialize if missing (unless FCA)
+    // FCAs (org_type 3) are excluded from scoring.
+    let performanceAccountToPass = performancePDA;
+    if (fromOrgType === 3) {
+        // For FCA, pass bridge config as placeholder as per IDL docs
+        performanceAccountToPass = distributionBridgeConfigPDA;
+    } else {
+        try {
+            const accInfo = await distributionProgram.provider.connection.getAccountInfo(performancePDA);
+            if (!accInfo) {
+                console.log(`[SOLANA] Initializing performance account for org ${from_org_id}...`);
+                await (distributionProgram.methods as any)
+                    .createActorPerformance(fromOrgIdBN, fromOrgType)
+                    .accounts({
+                        performance: performancePDA,
+                        bridgeConfig: distributionBridgeConfigPDA,
+                        authority: wallet.publicKey,
+                        systemProgram: SystemProgram.programId,
+                    })
+                    .signers([feePayer])
+                    .rpc();
+            }
+        } catch (err) {
+            console.error(`[SOLANA] Failed to check/init performance account for org ${from_org_id}:`, err);
+        }
+    }
+
     const txSig = await (distributionProgram.methods as any)
-        .confirmReceipt(distIdBN)
+        .confirmReceipt(
+            distIdBN,
+            Array.from(Buffer.from(recipient_signature, "base64")),
+            new BN(String(signed_by_actor_id), 10),
+            signer_role || "",
+            new BN(String(signer_organization_id || 0), 10)
+        )
         .accounts({
             distribution: distPDA,
+            performance: performanceAccountToPass,
             bridgeConfig: distributionBridgeConfigPDA,
             authority: wallet.publicKey,
         })
@@ -292,18 +369,33 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
  * Link to chain
  */
 export const linkToChainToSolana = async (data: any): Promise<string> => {
-    const { distribution_id, solana_tx_signature } = data;
+    const { distribution_id, previous_distribution_id } = data;
     const distIdBN = new BN(String(distribution_id), 10);
+    const prevDistIdBN = new BN(String(previous_distribution_id), 10);
 
     const [distPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("distribution"), Buffer.from(distIdBN.toArray("le", 8))],
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
+        DISTRIBUTION_PROGRAM_ID,
+    );
+
+    const [prevDistPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(prevDistIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
     const txSig = await (distributionProgram.methods as any)
-        .linkToChain(distIdBN, solana_tx_signature || "")
+        .linkToChain(distIdBN, prevDistIdBN)
         .accounts({
-            distribution: distPDA,
+            currentDistribution: distPDA,
+            previousDistribution: prevDistPDA,
             bridgeConfig: distributionBridgeConfigPDA,
             authority: wallet.publicKey,
         })
@@ -322,7 +414,11 @@ export const deleteDistributionOnSolana = async (
     const distIdBN = new BN(String(distribution_id), 10);
 
     const [distPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("distribution"), Buffer.from(distIdBN.toArray("le", 8))],
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
@@ -348,7 +444,11 @@ export const closeDistributionOnSolana = async (
     const distIdBN = new BN(String(distribution_id), 10);
 
     const [distPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("distribution"), Buffer.from(distIdBN.toArray("le", 8))],
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
@@ -356,6 +456,7 @@ export const closeDistributionOnSolana = async (
         .closeDistribution(distIdBN)
         .accounts({
             distribution: distPDA,
+            bridgeConfig: distributionBridgeConfigPDA,
             authority: wallet.publicKey,
         })
         .signers([feePayer])
@@ -368,12 +469,16 @@ export const closeDistributionOnSolana = async (
  * Submit checkpoint
  */
 export const submitCheckpointToSolana = async (data: any): Promise<string> => {
-    const { checkpoint_id, distribution_id, location, status } = data;
+    const { checkpoint_id, distribution_id, location, status, gps_lat, gps_lon, recorded_by } = data;
     const cpIdBN = new BN(String(checkpoint_id), 10);
     const distIdBN = new BN(String(distribution_id), 10);
 
     const [cpPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("checkpoint"), Buffer.from(cpIdBN.toArray("le", 8))],
+        [
+            Buffer.from("checkpoint"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(cpIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
@@ -381,8 +486,11 @@ export const submitCheckpointToSolana = async (data: any): Promise<string> => {
         .addCheckpoint(
             cpIdBN,
             distIdBN,
-            location || "",
             parseInt(String(status || 0), 10),
+            location || "",
+            new BN(String(gps_lat || 0), 10),
+            new BN(String(gps_lon || 0), 10),
+            new BN(String(recorded_by || 0), 10)
         )
         .accounts({
             checkpoint: cpPDA,
@@ -405,7 +513,11 @@ export const deleteCheckpointOnSolana = async (
     const cpIdBN = new BN(String(checkpoint_id), 10);
 
     const [cpPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("checkpoint"), Buffer.from(cpIdBN.toArray("le", 8))],
+        [
+            Buffer.from("checkpoint"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(cpIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
@@ -431,7 +543,11 @@ export const closeCheckpointOnSolana = async (
     const cpIdBN = new BN(String(checkpoint_id), 10);
 
     const [cpPDA] = PublicKey.findProgramAddressSync(
-        [Buffer.from("checkpoint"), Buffer.from(cpIdBN.toArray("le", 8))],
+        [
+            Buffer.from("checkpoint"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(cpIdBN.toArray("le", 8)),
+        ],
         DISTRIBUTION_PROGRAM_ID,
     );
 
@@ -439,10 +555,11 @@ export const closeCheckpointOnSolana = async (
         .closeCheckpoint(cpIdBN)
         .accounts({
             checkpoint: cpPDA,
+            bridgeConfig: distributionBridgeConfigPDA,
             authority: wallet.publicKey,
         })
         .signers([feePayer])
         .rpc();
 
     return txSig;
-};
+}
