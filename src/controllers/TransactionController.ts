@@ -4,6 +4,7 @@ import {
     checkTransactionExistsOnSolana,
     addTransactionToSolana,
     updateTransactionOnSolana,
+    getSignatureStatus,
 } from "../services/TransactionService.js";
 
 /**
@@ -173,6 +174,23 @@ export const updateTransaction = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error("Solana Update Transaction Error:", error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * Get transaction status by signature
+ */
+export const getTransactionStatus = async (req: Request, res: Response) => {
+    try {
+        const { signature } = req.params;
+        if (!signature) {
+            return res.status(400).json({ success: false, error: "Signature is required" });
+        }
+        const status = await getSignatureStatus(signature);
+        res.json({ success: true, status });
+    } catch (error: any) {
+        console.error("Solana Get Transaction Status Error:", error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 };
