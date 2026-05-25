@@ -10,6 +10,7 @@ import {
     CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
 import { buildItemsMerkleTree, generateProof } from "../utils/merkle.js";
+import { submitOrganizationToSolana } from "./OrganizationService.js";
 
 /**
  * Submit actor performance (Distribution program)
@@ -114,6 +115,10 @@ export const submitDistributionToSolana = async (
         gps_lat,
         gps_lon,
         expected_delivery_date,
+        from_org_type,
+        from_org_name,
+        to_org_type,
+        to_org_name,
     } = data;
 
     const distIdBN = new BN(String(distribution_id ?? 0), 10);
@@ -149,6 +154,10 @@ export const submitDistributionToSolana = async (
         ],
         CORE_PROGRAM_ID,
     );
+
+    // Auto-init Organizations if they don't exist on-chain
+    await ensureOrganizationExists(from_org_id, from_org_type, from_org_name, fromOrgPDA);
+    await ensureOrganizationExists(to_org_id, to_org_type, to_org_name, toOrgPDA);
 
     // Compute Merkle Root if items are provided
     let merkleRoot = null;
@@ -208,6 +217,36 @@ export const submitDistributionToSolana = async (
         proofs: proofs,
     };
 };
+
+/**
+ * Check if organization exists on-chain, initialize if missing
+ */
+async function ensureOrganizationExists(
+    orgId: any,
+    orgType: any,
+    name: any,
+    pda: PublicKey
+): Promise<void> {
+    if (!orgId || Number(orgId) === 0) return;
+
+    try {
+        const accInfo = await distributionProgram.provider.connection.getAccountInfo(pda);
+        if (!accInfo || !accInfo.owner.equals(CORE_PROGRAM_ID)) {
+            console.log(`[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`);
+            await submitOrganizationToSolana({
+                org_id: orgId,
+                name: name || `Organization ${orgId}`,
+                org_type: orgType || 0,
+                province: "",
+                city: "",
+                contact_person: "",
+            });
+            console.log(`[SOLANA] Organization ${orgId} auto-initialized successfully.`);
+        }
+    } catch (err) {
+        console.warn(`[SOLANA] Failed to check/init organization ${orgId}:`, err);
+    }
+}
 
 /**
  * Helper to pad strings and convert to byte arrays for Solana fixed-length fields
