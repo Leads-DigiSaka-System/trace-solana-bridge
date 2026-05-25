@@ -130,6 +130,7 @@ export const submitDistribution = async (req: Request, res: Response) => {
         const result = await DistributionService.submitDistributionToSolana(
             req.body,
         );
+
         res.status(200).json({
             success: true,
             message: "Distribution submitted to Solana",

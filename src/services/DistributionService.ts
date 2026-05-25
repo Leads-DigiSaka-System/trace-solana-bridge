@@ -43,7 +43,7 @@ export const submitActorPerformanceToSolana = async (
         .recordDeliveryPerformance(
             actorIdBN,
             (performance_score || 0) < 100 ? 0 : 1, // Example logic for late
-            new BN(String(reports_count || 0), 10)
+            new BN(String(reports_count || 0), 10),
         )
         .accounts({
             performance: performancePDA,
@@ -80,7 +80,7 @@ export const recordDeliveryPerformanceToSolana = async (
         .recordDeliveryPerformance(
             actorIdBN,
             on_time === 1 || on_time === true ? 0 : 1, // is_late (0=false, 1=true)
-            new BN(String(delay_hours || 0), 10)
+            new BN(String(delay_hours || 0), 10),
         )
         .accounts({
             performance: performancePDA,
@@ -156,8 +156,28 @@ export const submitDistributionToSolana = async (
     );
 
     // Auto-init Organizations if they don't exist on-chain
-    await ensureOrganizationExists(from_org_id, from_org_type, from_org_name, fromOrgPDA);
-    await ensureOrganizationExists(to_org_id, to_org_type, to_org_name, toOrgPDA);
+    await ensureOrganizationExists(
+        from_org_id,
+        from_org_type,
+        from_org_name,
+        fromOrgPDA,
+    );
+    await ensureOrganizationExists(
+        to_org_id,
+        to_org_type,
+        to_org_name,
+        toOrgPDA,
+    );
+
+    console.log("Authority:", wallet.publicKey.toBase58());
+    console.log("Distribution ID:", distIdBN.toString());
+    console.log("Derived PDA:", distPDA.toBase58());
+
+    console.log(
+        "Raw distribution_id from data:",
+        data.distribution_id,
+        typeof data.distribution_id,
+    );
 
     // Compute Merkle Root if items are provided
     let merkleRoot = null;
@@ -225,14 +245,17 @@ async function ensureOrganizationExists(
     orgId: any,
     orgType: any,
     name: any,
-    pda: PublicKey
+    pda: PublicKey,
 ): Promise<void> {
     if (!orgId || Number(orgId) === 0) return;
 
     try {
-        const accInfo = await distributionProgram.provider.connection.getAccountInfo(pda);
+        const accInfo =
+            await distributionProgram.provider.connection.getAccountInfo(pda);
         if (!accInfo || !accInfo.owner.equals(CORE_PROGRAM_ID)) {
-            console.log(`[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`);
+            console.log(
+                `[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`,
+            );
             await submitOrganizationToSolana({
                 org_id: orgId,
                 name: name || `Organization ${orgId}`,
@@ -241,10 +264,15 @@ async function ensureOrganizationExists(
                 city: "",
                 contact_person: "",
             });
-            console.log(`[SOLANA] Organization ${orgId} auto-initialized successfully.`);
+            console.log(
+                `[SOLANA] Organization ${orgId} auto-initialized successfully.`,
+            );
         }
     } catch (err) {
-        console.warn(`[SOLANA] Failed to check/init organization ${orgId}:`, err);
+        console.warn(
+            `[SOLANA] Failed to check/init organization ${orgId}:`,
+            err,
+        );
     }
 }
 
@@ -309,7 +337,7 @@ export const updateDeliveryStatusToSolana = async (
             distIdBN,
             parseInt(String(status || 0), 10),
             new BN(String(gps_lat || 0), 10),
-            new BN(String(gps_lon || 0), 10)
+            new BN(String(gps_lon || 0), 10),
         )
         .accounts({
             distribution: distPDA,
@@ -365,9 +393,14 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
         performanceAccountToPass = distributionBridgeConfigPDA;
     } else {
         try {
-            const accInfo = await distributionProgram.provider.connection.getAccountInfo(performancePDA);
+            const accInfo =
+                await distributionProgram.provider.connection.getAccountInfo(
+                    performancePDA,
+                );
             if (!accInfo) {
-                console.log(`[SOLANA] Initializing performance account for org ${from_org_id}...`);
+                console.log(
+                    `[SOLANA] Initializing performance account for org ${from_org_id}...`,
+                );
                 await (distributionProgram.methods as any)
                     .createActorPerformance(fromOrgIdBN, fromOrgType)
                     .accounts({
@@ -380,7 +413,10 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
                     .rpc();
             }
         } catch (err) {
-            console.error(`[SOLANA] Failed to check/init performance account for org ${from_org_id}:`, err);
+            console.error(
+                `[SOLANA] Failed to check/init performance account for org ${from_org_id}:`,
+                err,
+            );
         }
     }
 
@@ -390,7 +426,7 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
             Array.from(Buffer.from(recipient_signature, "base64")),
             new BN(String(signed_by_actor_id), 10),
             signer_role || "",
-            new BN(String(signer_organization_id || 0), 10)
+            new BN(String(signer_organization_id || 0), 10),
         )
         .accounts({
             distribution: distPDA,
@@ -508,7 +544,15 @@ export const closeDistributionOnSolana = async (
  * Submit checkpoint
  */
 export const submitCheckpointToSolana = async (data: any): Promise<string> => {
-    const { checkpoint_id, distribution_id, location, status, gps_lat, gps_lon, recorded_by } = data;
+    const {
+        checkpoint_id,
+        distribution_id,
+        location,
+        status,
+        gps_lat,
+        gps_lon,
+        recorded_by,
+    } = data;
     const cpIdBN = new BN(String(checkpoint_id), 10);
     const distIdBN = new BN(String(distribution_id), 10);
 
@@ -529,7 +573,7 @@ export const submitCheckpointToSolana = async (data: any): Promise<string> => {
             location || "",
             new BN(String(gps_lat || 0), 10),
             new BN(String(gps_lon || 0), 10),
-            new BN(String(recorded_by || 0), 10)
+            new BN(String(recorded_by || 0), 10),
         )
         .accounts({
             checkpoint: cpPDA,
@@ -601,4 +645,4 @@ export const closeCheckpointOnSolana = async (
         .rpc();
 
     return txSig;
-}
+};
