@@ -103,6 +103,7 @@ export const submitDistributionToSolana = async (
     transaction_signature: string;
     merkle_root: string | null;
     proofs: any[];
+    already_exists?: boolean;
 }> => {
     const {
         distribution_id,
@@ -121,6 +122,13 @@ export const submitDistributionToSolana = async (
         to_org_name,
     } = data;
 
+    // At the top of submitDistributionToSolana
+    if (!distribution_id && distribution_id !== 0) {
+        throw new Error(
+            "distribution_id is required and must not be null/undefined",
+        );
+    }
+
     const distIdBN = new BN(String(distribution_id ?? 0), 10);
     const prevDistIdBN = new BN(String(previous_distribution_id ?? 0), 10);
     const fromOrgIdBN = new BN(String(from_org_id ?? 0), 10);
@@ -135,6 +143,93 @@ export const submitDistributionToSolana = async (
         ],
         DISTRIBUTION_PROGRAM_ID,
     );
+
+    // Compute Merkle Root if items are provided
+    let merkleRoot = null;
+    let proofs: any[] = [];
+    if (items && Array.isArray(items) && items.length > 0) {
+        try {
+            const tree = buildItemsMerkleTree(items);
+            merkleRoot = tree.root!.toString("hex");
+            proofs = items.map((_, index) => ({
+                index,
+                leaf_hash: tree.leafHashes![index]!.toString("hex"),
+                proof: generateProof(tree.layers!, index),
+            }));
+            console.log(
+                `[MERKLE] Generated root for dist ${distribution_id}: ${merkleRoot}`,
+            );
+        } catch (err) {
+            console.error(
+                `[MERKLE] Error generating tree for dist ${distribution_id}:`,
+                err,
+            );
+        }
+    }
+
+    // ✅ Pre-flight: check if already exists
+    const existing =
+        await distributionProgram.provider.connection.getAccountInfo(distPDA);
+    if (existing !== null) {
+        // Fetch the on-chain account to read its current status.
+        // If the status is > 0 (past allocated), this PDA is stale — most
+        // likely from a previous distribution that went through transitions
+        // before the DB was reset. We must NOT allow the new distribution
+        // to silently bind to this stale on-chain account.
+        try {
+            const onchainDist = await (distributionProgram.account as any)
+                .distributionRecord
+                .fetch(distPDA);
+            const onchainStatus: number = onchainDist.status ?? -1;
+
+            if (onchainStatus > 0) {
+                throw new Error(
+                    `[STALE_PDA] Distribution PDA for id=${distribution_id} already exists on-chain ` +
+                    `with status=${onchainStatus} (0=allocated, 1=dispatched, 2=in_transit, 3=delivered, 4=confirmed). ` +
+                    `This Solana account was created by a prior distribution and has already advanced through transitions. ` +
+                    `A new distribution cannot reuse this on-chain account. ` +
+                    `To resolve: close the existing Solana account via the admin close-distribution endpoint, ` +
+                    `then retry creation.`
+                );
+            }
+
+            console.warn(
+                `[SOLANA] Distribution PDA already exists for id=${distribution_id} with status=0 (allocated). ` +
+                `Treating as idempotent — returning original transaction.`,
+            );
+        } catch (fetchErr: any) {
+            // Re-throw our own stale-PDA error immediately.
+            if (fetchErr.message?.includes("[STALE_PDA]")) {
+                throw fetchErr;
+            }
+            // If we can't read the on-chain account (e.g., RPC error), log and
+            // fall through conservatively — better to surface an error than to
+            // silently allow a potentially desynced distribution.
+            console.warn(
+                `[SOLANA] Could not fetch on-chain status for existing PDA ${distPDA.toBase58()}: ${fetchErr.message}. ` +
+                `Treating as unknown — returning already_exists.`,
+            );
+        }
+
+        const signatures =
+            await distributionProgram.provider.connection.getSignaturesForAddress(
+                distPDA,
+                { limit: 1 },
+                "confirmed",
+            );
+        const originalSig = signatures?.[0]?.signature ?? "unknown";
+
+        console.warn(
+            `[SOLANA] Distribution PDA already exists for id=${distribution_id}. Original tx: ${originalSig}`,
+        );
+
+        return {
+            transaction_signature: originalSig,
+            merkle_root: merkleRoot,
+            proofs: proofs,
+            already_exists: true,
+        };
+    }
 
     // Derive Org PDAs: [b"organization", authority, org_id]
     const [fromOrgPDA] = PublicKey.findProgramAddressSync(
@@ -178,29 +273,6 @@ export const submitDistributionToSolana = async (
         data.distribution_id,
         typeof data.distribution_id,
     );
-
-    // Compute Merkle Root if items are provided
-    let merkleRoot = null;
-    let proofs: any[] = [];
-    if (items && Array.isArray(items) && items.length > 0) {
-        try {
-            const tree = buildItemsMerkleTree(items);
-            merkleRoot = tree.root!.toString("hex");
-            proofs = items.map((_, index) => ({
-                index,
-                leaf_hash: tree.leafHashes![index]!.toString("hex"),
-                proof: generateProof(tree.layers!, index),
-            }));
-            console.log(
-                `[MERKLE] Generated root for dist ${distribution_id}: ${merkleRoot}`,
-            );
-        } catch (err) {
-            console.error(
-                `[MERKLE] Error generating tree for dist ${distribution_id}:`,
-                err,
-            );
-        }
-    }
 
     const txSig = await (distributionProgram.methods as any)
         .createDistribution(
@@ -332,22 +404,35 @@ export const updateDeliveryStatusToSolana = async (
         DISTRIBUTION_PROGRAM_ID,
     );
 
-    const txSig = await (distributionProgram.methods as any)
-        .updateDeliveryStatus(
-            distIdBN,
-            parseInt(String(status || 0), 10),
-            new BN(String(gps_lat || 0), 10),
-            new BN(String(gps_lon || 0), 10),
-        )
-        .accounts({
-            distribution: distPDA,
-            bridgeConfig: distributionBridgeConfigPDA,
-            authority: wallet.publicKey,
-        })
-        .signers([feePayer])
-        .rpc();
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .updateDeliveryStatus(
+                distIdBN,
+                parseInt(String(status || 0), 10),
+                new BN(String(gps_lat || 0), 10),
+                new BN(String(gps_lon || 0), 10),
+            )
+            .accounts({
+                distribution: distPDA,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
 
-    return txSig;
+        return txSig;
+    } catch (err: any) {
+        if (err.message && (err.message.includes("InvalidStatusTransition") || err.message.includes("6005"))) {
+            console.warn(`[SOLANA] Distribution ${distribution_id} already updated/forwarded (InvalidStatusTransition). Returning latest signature.`);
+            const signatures = await distributionProgram.provider.connection.getSignaturesForAddress(
+                distPDA,
+                { limit: 1 },
+                "confirmed"
+            );
+            return signatures?.[0]?.signature ?? "unknown";
+        }
+        throw err;
+    }
 };
 
 /**
@@ -420,24 +505,37 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
         }
     }
 
-    const txSig = await (distributionProgram.methods as any)
-        .confirmReceipt(
-            distIdBN,
-            Array.from(Buffer.from(recipient_signature, "base64")),
-            new BN(String(signed_by_actor_id), 10),
-            signer_role || "",
-            new BN(String(signer_organization_id || 0), 10),
-        )
-        .accounts({
-            distribution: distPDA,
-            performance: performanceAccountToPass,
-            bridgeConfig: distributionBridgeConfigPDA,
-            authority: wallet.publicKey,
-        })
-        .signers([feePayer])
-        .rpc();
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .confirmReceipt(
+                distIdBN,
+                Array.from(Buffer.from(recipient_signature, "base64")),
+                new BN(String(signed_by_actor_id), 10),
+                signer_role || "",
+                new BN(String(signer_organization_id || 0), 10),
+            )
+            .accounts({
+                distribution: distPDA,
+                performance: performanceAccountToPass,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
 
-    return txSig;
+        return txSig;
+    } catch (err: any) {
+        if (err.message && (err.message.includes("InvalidStatusTransition") || err.message.includes("6005"))) {
+            console.warn(`[SOLANA] Distribution ${distribution_id} already confirmed (InvalidStatusTransition). Returning latest signature.`);
+            const signatures = await distributionProgram.provider.connection.getSignaturesForAddress(
+                distPDA,
+                { limit: 1 },
+                "confirmed"
+            );
+            return signatures?.[0]?.signature ?? "unknown";
+        }
+        throw err;
+    }
 };
 
 /**
