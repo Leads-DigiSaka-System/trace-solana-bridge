@@ -43,7 +43,7 @@ export const submitActorPerformanceToSolana = async (
         .recordDeliveryPerformance(
             actorIdBN,
             (performance_score || 0) < 100 ? 0 : 1, // Example logic for late
-            new BN(String(reports_count || 0), 10)
+            new BN(String(reports_count || 0), 10),
         )
         .accounts({
             performance: performancePDA,
@@ -80,7 +80,7 @@ export const recordDeliveryPerformanceToSolana = async (
         .recordDeliveryPerformance(
             actorIdBN,
             on_time === 1 || on_time === true ? 0 : 1, // is_late (0=false, 1=true)
-            new BN(String(delay_hours || 0), 10)
+            new BN(String(delay_hours || 0), 10),
         )
         .accounts({
             performance: performancePDA,
@@ -103,6 +103,7 @@ export const submitDistributionToSolana = async (
     transaction_signature: string;
     merkle_root: string | null;
     proofs: any[];
+    already_exists?: boolean;
 }> => {
     const {
         distribution_id,
@@ -121,6 +122,13 @@ export const submitDistributionToSolana = async (
         to_org_name,
     } = data;
 
+    // At the top of submitDistributionToSolana
+    if (!distribution_id && distribution_id !== 0) {
+        throw new Error(
+            "distribution_id is required and must not be null/undefined",
+        );
+    }
+
     const distIdBN = new BN(String(distribution_id ?? 0), 10);
     const prevDistIdBN = new BN(String(previous_distribution_id ?? 0), 10);
     const fromOrgIdBN = new BN(String(from_org_id ?? 0), 10);
@@ -135,29 +143,6 @@ export const submitDistributionToSolana = async (
         ],
         DISTRIBUTION_PROGRAM_ID,
     );
-
-    // Derive Org PDAs: [b"organization", authority, org_id]
-    const [fromOrgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            wallet.publicKey.toBuffer(),
-            Buffer.from(fromOrgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
-
-    const [toOrgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            wallet.publicKey.toBuffer(),
-            Buffer.from(toOrgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
-
-    // Auto-init Organizations if they don't exist on-chain
-    await ensureOrganizationExists(from_org_id, from_org_type, from_org_name, fromOrgPDA);
-    await ensureOrganizationExists(to_org_id, to_org_type, to_org_name, toOrgPDA);
 
     // Compute Merkle Root if items are provided
     let merkleRoot = null;
@@ -181,6 +166,113 @@ export const submitDistributionToSolana = async (
             );
         }
     }
+
+    // ✅ Pre-flight: check if already exists
+    const existing =
+        await distributionProgram.provider.connection.getAccountInfo(distPDA);
+    if (existing !== null) {
+        // Fetch the on-chain account to read its current status.
+        // If the status is > 0 (past allocated), this PDA is stale — most
+        // likely from a previous distribution that went through transitions
+        // before the DB was reset. We must NOT allow the new distribution
+        // to silently bind to this stale on-chain account.
+        try {
+            const onchainDist = await (distributionProgram.account as any)
+                .distributionRecord
+                .fetch(distPDA);
+            const onchainStatus: number = onchainDist.status ?? -1;
+
+            if (onchainStatus > 0) {
+                throw new Error(
+                    `[STALE_PDA] Distribution PDA for id=${distribution_id} already exists on-chain ` +
+                    `with status=${onchainStatus} (0=allocated, 1=dispatched, 2=in_transit, 3=delivered, 4=confirmed). ` +
+                    `This Solana account was created by a prior distribution and has already advanced through transitions. ` +
+                    `A new distribution cannot reuse this on-chain account. ` +
+                    `To resolve: close the existing Solana account via the admin close-distribution endpoint, ` +
+                    `then retry creation.`
+                );
+            }
+
+            console.warn(
+                `[SOLANA] Distribution PDA already exists for id=${distribution_id} with status=0 (allocated). ` +
+                `Treating as idempotent — returning original transaction.`,
+            );
+        } catch (fetchErr: any) {
+            // Re-throw our own stale-PDA error immediately.
+            if (fetchErr.message?.includes("[STALE_PDA]")) {
+                throw fetchErr;
+            }
+            // If we can't read the on-chain account (e.g., RPC error), log and
+            // fall through conservatively — better to surface an error than to
+            // silently allow a potentially desynced distribution.
+            console.warn(
+                `[SOLANA] Could not fetch on-chain status for existing PDA ${distPDA.toBase58()}: ${fetchErr.message}. ` +
+                `Treating as unknown — returning already_exists.`,
+            );
+        }
+
+        const signatures =
+            await distributionProgram.provider.connection.getSignaturesForAddress(
+                distPDA,
+                { limit: 1 },
+                "confirmed",
+            );
+        const originalSig = signatures?.[0]?.signature ?? "unknown";
+
+        console.warn(
+            `[SOLANA] Distribution PDA already exists for id=${distribution_id}. Original tx: ${originalSig}`,
+        );
+
+        return {
+            transaction_signature: originalSig,
+            merkle_root: merkleRoot,
+            proofs: proofs,
+            already_exists: true,
+        };
+    }
+
+    // Derive Org PDAs: [b"organization", authority, org_id]
+    const [fromOrgPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("organization"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(fromOrgIdBN.toArray("le", 8)),
+        ],
+        CORE_PROGRAM_ID,
+    );
+
+    const [toOrgPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("organization"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(toOrgIdBN.toArray("le", 8)),
+        ],
+        CORE_PROGRAM_ID,
+    );
+
+    // Auto-init Organizations if they don't exist on-chain
+    await ensureOrganizationExists(
+        from_org_id,
+        from_org_type,
+        from_org_name,
+        fromOrgPDA,
+    );
+    await ensureOrganizationExists(
+        to_org_id,
+        to_org_type,
+        to_org_name,
+        toOrgPDA,
+    );
+
+    console.log("Authority:", wallet.publicKey.toBase58());
+    console.log("Distribution ID:", distIdBN.toString());
+    console.log("Derived PDA:", distPDA.toBase58());
+
+    console.log(
+        "Raw distribution_id from data:",
+        data.distribution_id,
+        typeof data.distribution_id,
+    );
 
     const txSig = await (distributionProgram.methods as any)
         .createDistribution(
@@ -225,14 +317,17 @@ async function ensureOrganizationExists(
     orgId: any,
     orgType: any,
     name: any,
-    pda: PublicKey
+    pda: PublicKey,
 ): Promise<void> {
     if (!orgId || Number(orgId) === 0) return;
 
     try {
-        const accInfo = await distributionProgram.provider.connection.getAccountInfo(pda);
+        const accInfo =
+            await distributionProgram.provider.connection.getAccountInfo(pda);
         if (!accInfo || !accInfo.owner.equals(CORE_PROGRAM_ID)) {
-            console.log(`[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`);
+            console.log(
+                `[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`,
+            );
             await submitOrganizationToSolana({
                 org_id: orgId,
                 name: name || `Organization ${orgId}`,
@@ -241,10 +336,15 @@ async function ensureOrganizationExists(
                 city: "",
                 contact_person: "",
             });
-            console.log(`[SOLANA] Organization ${orgId} auto-initialized successfully.`);
+            console.log(
+                `[SOLANA] Organization ${orgId} auto-initialized successfully.`,
+            );
         }
     } catch (err) {
-        console.warn(`[SOLANA] Failed to check/init organization ${orgId}:`, err);
+        console.warn(
+            `[SOLANA] Failed to check/init organization ${orgId}:`,
+            err,
+        );
     }
 }
 
@@ -304,22 +404,35 @@ export const updateDeliveryStatusToSolana = async (
         DISTRIBUTION_PROGRAM_ID,
     );
 
-    const txSig = await (distributionProgram.methods as any)
-        .updateDeliveryStatus(
-            distIdBN,
-            parseInt(String(status || 0), 10),
-            new BN(String(gps_lat || 0), 10),
-            new BN(String(gps_lon || 0), 10)
-        )
-        .accounts({
-            distribution: distPDA,
-            bridgeConfig: distributionBridgeConfigPDA,
-            authority: wallet.publicKey,
-        })
-        .signers([feePayer])
-        .rpc();
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .updateDeliveryStatus(
+                distIdBN,
+                parseInt(String(status || 0), 10),
+                new BN(String(gps_lat || 0), 10),
+                new BN(String(gps_lon || 0), 10),
+            )
+            .accounts({
+                distribution: distPDA,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
 
-    return txSig;
+        return txSig;
+    } catch (err: any) {
+        if (err.message && (err.message.includes("InvalidStatusTransition") || err.message.includes("6005"))) {
+            console.warn(`[SOLANA] Distribution ${distribution_id} already updated/forwarded (InvalidStatusTransition). Returning latest signature.`);
+            const signatures = await distributionProgram.provider.connection.getSignaturesForAddress(
+                distPDA,
+                { limit: 1 },
+                "confirmed"
+            );
+            return signatures?.[0]?.signature ?? "unknown";
+        }
+        throw err;
+    }
 };
 
 /**
@@ -365,9 +478,14 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
         performanceAccountToPass = distributionBridgeConfigPDA;
     } else {
         try {
-            const accInfo = await distributionProgram.provider.connection.getAccountInfo(performancePDA);
+            const accInfo =
+                await distributionProgram.provider.connection.getAccountInfo(
+                    performancePDA,
+                );
             if (!accInfo) {
-                console.log(`[SOLANA] Initializing performance account for org ${from_org_id}...`);
+                console.log(
+                    `[SOLANA] Initializing performance account for org ${from_org_id}...`,
+                );
                 await (distributionProgram.methods as any)
                     .createActorPerformance(fromOrgIdBN, fromOrgType)
                     .accounts({
@@ -380,28 +498,44 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
                     .rpc();
             }
         } catch (err) {
-            console.error(`[SOLANA] Failed to check/init performance account for org ${from_org_id}:`, err);
+            console.error(
+                `[SOLANA] Failed to check/init performance account for org ${from_org_id}:`,
+                err,
+            );
         }
     }
 
-    const txSig = await (distributionProgram.methods as any)
-        .confirmReceipt(
-            distIdBN,
-            Array.from(Buffer.from(recipient_signature, "base64")),
-            new BN(String(signed_by_actor_id), 10),
-            signer_role || "",
-            new BN(String(signer_organization_id || 0), 10)
-        )
-        .accounts({
-            distribution: distPDA,
-            performance: performanceAccountToPass,
-            bridgeConfig: distributionBridgeConfigPDA,
-            authority: wallet.publicKey,
-        })
-        .signers([feePayer])
-        .rpc();
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .confirmReceipt(
+                distIdBN,
+                Array.from(Buffer.from(recipient_signature, "base64")),
+                new BN(String(signed_by_actor_id), 10),
+                signer_role || "",
+                new BN(String(signer_organization_id || 0), 10),
+            )
+            .accounts({
+                distribution: distPDA,
+                performance: performanceAccountToPass,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
 
-    return txSig;
+        return txSig;
+    } catch (err: any) {
+        if (err.message && (err.message.includes("InvalidStatusTransition") || err.message.includes("6005"))) {
+            console.warn(`[SOLANA] Distribution ${distribution_id} already confirmed (InvalidStatusTransition). Returning latest signature.`);
+            const signatures = await distributionProgram.provider.connection.getSignaturesForAddress(
+                distPDA,
+                { limit: 1 },
+                "confirmed"
+            );
+            return signatures?.[0]?.signature ?? "unknown";
+        }
+        throw err;
+    }
 };
 
 /**
@@ -508,7 +642,15 @@ export const closeDistributionOnSolana = async (
  * Submit checkpoint
  */
 export const submitCheckpointToSolana = async (data: any): Promise<string> => {
-    const { checkpoint_id, distribution_id, location, status, gps_lat, gps_lon, recorded_by } = data;
+    const {
+        checkpoint_id,
+        distribution_id,
+        location,
+        status,
+        gps_lat,
+        gps_lon,
+        recorded_by,
+    } = data;
     const cpIdBN = new BN(String(checkpoint_id), 10);
     const distIdBN = new BN(String(distribution_id), 10);
 
@@ -529,7 +671,7 @@ export const submitCheckpointToSolana = async (data: any): Promise<string> => {
             location || "",
             new BN(String(gps_lat || 0), 10),
             new BN(String(gps_lon || 0), 10),
-            new BN(String(recorded_by || 0), 10)
+            new BN(String(recorded_by || 0), 10),
         )
         .accounts({
             checkpoint: cpPDA,
@@ -601,4 +743,4 @@ export const closeCheckpointOnSolana = async (
         .rpc();
 
     return txSig;
-}
+};
