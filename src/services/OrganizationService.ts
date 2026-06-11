@@ -1,13 +1,13 @@
 import * as anchor from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { SystemProgram } from "@solana/web3.js";
 import BN from "bn.js";
 import {
     feePayer,
     wallet,
     coreProgram,
     bridgeConfigPDA,
-    CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
+import { deriveOrganizationPda } from "../utils/pda.js";
 
 /**
  * Submit a new organization to Solana
@@ -18,15 +18,7 @@ export const submitOrganizationToSolana = async (
     const { org_id, name, org_type, province, city, contact_person } = orgData;
 
     const orgIdBN = new BN(String(org_id), 10);
-
-    const [orgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            feePayer.publicKey.toBuffer(),
-            Buffer.from(orgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
+    const [orgPDA] = deriveOrganizationPda(orgIdBN);
 
     try {
         const txSig = await (coreProgram.methods as any)
@@ -64,15 +56,7 @@ export const updateOrganizationOnSolana = async (
     const { org_id, name, contact_person, is_active } = orgData;
 
     const orgIdBN = new BN(String(org_id), 10);
-
-    const [orgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            feePayer.publicKey.toBuffer(),
-            Buffer.from(orgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
+    const [orgPDA] = deriveOrganizationPda(orgIdBN);
 
     try {
         const txSig = await (coreProgram.methods as any)
@@ -107,15 +91,7 @@ export const deleteOrganizationOnSolana = async (
     org_id: number | string,
 ): Promise<string> => {
     const orgIdBN = new BN(String(org_id), 10);
-
-    const [orgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            feePayer.publicKey.toBuffer(),
-            Buffer.from(orgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
+    const [orgPDA] = deriveOrganizationPda(orgIdBN);
 
     try {
         const txSig = await (coreProgram.methods as any)
