@@ -177,25 +177,25 @@ export const submitDistributionToSolana = async (
         // before the DB was reset. We must NOT allow the new distribution
         // to silently bind to this stale on-chain account.
         try {
-            const onchainDist = await (distributionProgram.account as any)
-                .distributionRecord
-                .fetch(distPDA);
+            const onchainDist = await (
+                distributionProgram.account as any
+            ).distributionRecord.fetch(distPDA);
             const onchainStatus: number = onchainDist.status ?? -1;
 
             if (onchainStatus > 0) {
                 throw new Error(
                     `[STALE_PDA] Distribution PDA for id=${distribution_id} already exists on-chain ` +
-                    `with status=${onchainStatus} (0=allocated, 1=dispatched, 2=in_transit, 3=delivered, 4=confirmed). ` +
-                    `This Solana account was created by a prior distribution and has already advanced through transitions. ` +
-                    `A new distribution cannot reuse this on-chain account. ` +
-                    `To resolve: close the existing Solana account via the admin close-distribution endpoint, ` +
-                    `then retry creation.`
+                        `with status=${onchainStatus} (0=allocated, 1=dispatched, 2=in_transit, 3=delivered, 4=received, 5=confirmed, 6=cancelled). ` +
+                        `This Solana account was created by a prior distribution and has already advanced through transitions. ` +
+                        `A new distribution cannot reuse this on-chain account. ` +
+                        `To resolve: close the existing Solana account via the admin close-distribution endpoint, ` +
+                        `then retry creation.`,
                 );
             }
 
             console.warn(
                 `[SOLANA] Distribution PDA already exists for id=${distribution_id} with status=0 (allocated). ` +
-                `Treating as idempotent — returning original transaction.`,
+                    `Treating as idempotent — returning original transaction.`,
             );
         } catch (fetchErr: any) {
             // Re-throw our own stale-PDA error immediately.
@@ -207,7 +207,7 @@ export const submitDistributionToSolana = async (
             // silently allow a potentially desynced distribution.
             console.warn(
                 `[SOLANA] Could not fetch on-chain status for existing PDA ${distPDA.toBase58()}: ${fetchErr.message}. ` +
-                `Treating as unknown — returning already_exists.`,
+                    `Treating as unknown — returning already_exists.`,
             );
         }
 
@@ -422,13 +422,73 @@ export const updateDeliveryStatusToSolana = async (
 
         return txSig;
     } catch (err: any) {
-        if (err.message && (err.message.includes("InvalidStatusTransition") || err.message.includes("6005"))) {
-            console.warn(`[SOLANA] Distribution ${distribution_id} already updated/forwarded (InvalidStatusTransition). Returning latest signature.`);
-            const signatures = await distributionProgram.provider.connection.getSignaturesForAddress(
-                distPDA,
-                { limit: 1 },
-                "confirmed"
+        if (
+            err.message &&
+            (err.message.includes("InvalidStatusTransition") ||
+                err.message.includes("6005"))
+        ) {
+            console.warn(
+                `[SOLANA] Distribution ${distribution_id} already updated/forwarded (InvalidStatusTransition). Returning latest signature.`,
             );
+            const signatures =
+                await distributionProgram.provider.connection.getSignaturesForAddress(
+                    distPDA,
+                    { limit: 1 },
+                    "confirmed",
+                );
+            return signatures?.[0]?.signature ?? "unknown";
+        }
+        throw err;
+    }
+};
+
+/**
+ * Record QA inspection results (accepted/rejected qty) while status == RECEIVED
+ */
+export const recordQaToSolana = async (data: any): Promise<string> => {
+    const { distribution_id, accepted_qty, rejected_qty } = data;
+    const distIdBN = new BN(String(distribution_id), 10);
+
+    const [distPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
+        DISTRIBUTION_PROGRAM_ID,
+    );
+
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .recordQa(
+                distIdBN,
+                new BN(String(accepted_qty || 0), 10),
+                new BN(String(rejected_qty || 0), 10),
+            )
+            .accounts({
+                distribution: distPDA,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        return txSig;
+    } catch (err: any) {
+        if (
+            err.message &&
+            (err.message.includes("InvalidStatusTransition") ||
+                err.message.includes("6005"))
+        ) {
+            console.warn(
+                `[SOLANA] Distribution ${distribution_id} not in RECEIVED state (InvalidStatusTransition). Returning latest signature.`,
+            );
+            const signatures =
+                await distributionProgram.provider.connection.getSignaturesForAddress(
+                    distPDA,
+                    { limit: 1 },
+                    "confirmed",
+                );
             return signatures?.[0]?.signature ?? "unknown";
         }
         throw err;
@@ -525,13 +585,20 @@ export const confirmReceiptToSolana = async (data: any): Promise<string> => {
 
         return txSig;
     } catch (err: any) {
-        if (err.message && (err.message.includes("InvalidStatusTransition") || err.message.includes("6005"))) {
-            console.warn(`[SOLANA] Distribution ${distribution_id} already confirmed (InvalidStatusTransition). Returning latest signature.`);
-            const signatures = await distributionProgram.provider.connection.getSignaturesForAddress(
-                distPDA,
-                { limit: 1 },
-                "confirmed"
+        if (
+            err.message &&
+            (err.message.includes("InvalidStatusTransition") ||
+                err.message.includes("6005"))
+        ) {
+            console.warn(
+                `[SOLANA] Distribution ${distribution_id} already confirmed (InvalidStatusTransition). Returning latest signature.`,
             );
+            const signatures =
+                await distributionProgram.provider.connection.getSignaturesForAddress(
+                    distPDA,
+                    { limit: 1 },
+                    "confirmed",
+                );
             return signatures?.[0]?.signature ?? "unknown";
         }
         throw err;

@@ -188,6 +188,49 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
 
 /**
  * @openapi
+ * /distribution/record-qa:
+ *   post:
+ *     summary: Record QA inspection results on Solana (accepted/rejected qty)
+ *     tags: [Distribution]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [distribution_id, accepted_qty, rejected_qty]
+ *             properties:
+ *               distribution_id:
+ *                 type: string
+ *               accepted_qty:
+ *                 type: number
+ *               rejected_qty:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: QA results recorded
+ *       500:
+ *         description: Server error
+ */
+export const recordQa = async (req: Request, res: Response) => {
+    try {
+        const txSig = await DistributionService.recordQaToSolana(req.body);
+        res.status(200).json({
+            success: true,
+            message: "QA results recorded on Solana",
+            transaction_signature: txSig,
+        });
+    } catch (err: any) {
+        console.error("Error recording QA results:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+/**
+ * @openapi
  * /distribution/confirm-receipt:
  *   post:
  *     summary: Confirm receipt of distribution on Solana
