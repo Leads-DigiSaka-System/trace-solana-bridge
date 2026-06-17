@@ -10,6 +10,11 @@ jest.unstable_mockModule("../src/config/solanaConfig.js", () => {
         feePayer: { publicKey: pubkey },
         wallet: { publicKey: pubkey },
         coreProgram: {
+            provider: {
+                connection: {
+                    getAccountInfo: jest.fn().mockResolvedValue(null),
+                },
+            },
             methods: {
                 createOrganization: jest.fn().mockReturnThis(),
                 registerValidator: jest.fn().mockReturnThis(),
@@ -72,8 +77,8 @@ describe("Core Services", () => {
             rpc: mockRpc,
         });
 
-        const txSig = await submitClusterToSolana(data);
-        expect(txSig).toBe("mock_tx_sig");
+        const result = await submitClusterToSolana(data);
+        expect(result.transaction_signature).toBe("mock_tx_sig");
         expect(coreProgram.methods.createCluster).toHaveBeenCalled();
     });
 });
