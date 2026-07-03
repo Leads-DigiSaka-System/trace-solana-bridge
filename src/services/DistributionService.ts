@@ -707,8 +707,15 @@ export const closeDistributionOnSolana = async (
 
 /**
  * Submit checkpoint
+ *
+ * Idempotent: if this checkpoint_id was already anchored on-chain (e.g. a
+ * client/queue retry after a slow confirmation), we don't attempt `init`
+ * again — we look up and return the original transaction signature instead
+ * of throwing a PDA "already in use" error.
  */
-export const submitCheckpointToSolana = async (data: any): Promise<string> => {
+export const submitCheckpointToSolana = async (
+    data: any,
+): Promise<{ transaction_signature: string; already_exists?: boolean }> => {
     const {
         checkpoint_id,
         distribution_id,
@@ -718,6 +725,11 @@ export const submitCheckpointToSolana = async (data: any): Promise<string> => {
         gps_lon,
         recorded_by,
     } = data;
+
+    if (checkpoint_id === undefined || checkpoint_id === null) {
+        throw new Error("checkpoint_id is required but was not provided");
+    }
+
     const cpIdBN = new BN(String(checkpoint_id), 10);
     const distIdBN = new BN(String(distribution_id), 10);
 
@@ -729,6 +741,33 @@ export const submitCheckpointToSolana = async (data: any): Promise<string> => {
         ],
         DISTRIBUTION_PROGRAM_ID,
     );
+
+    // ✅ Pre-flight: check if this checkpoint was already anchored
+    const existing =
+        await distributionProgram.provider.connection.getAccountInfo(cpPDA);
+    if (existing !== null) {
+        console.warn(
+            `[SOLANA] Checkpoint PDA already exists for checkpoint_id=${checkpoint_id}. ` +
+                `Treating as idempotent — returning original transaction.`,
+        );
+
+        const signatures =
+            await distributionProgram.provider.connection.getSignaturesForAddress(
+                cpPDA,
+                { limit: 1 },
+                "confirmed",
+            );
+        const originalSig = signatures?.[0]?.signature ?? "unknown";
+
+        console.warn(
+            `[SOLANA] Checkpoint ${checkpoint_id} already exists. Original tx: ${originalSig}`,
+        );
+
+        return {
+            transaction_signature: originalSig,
+            already_exists: true,
+        };
+    }
 
     const txSig = await (distributionProgram.methods as any)
         .addCheckpoint(
@@ -749,7 +788,7 @@ export const submitCheckpointToSolana = async (data: any): Promise<string> => {
         .signers([feePayer])
         .rpc();
 
-    return txSig;
+    return { transaction_signature: txSig };
 };
 
 /**
