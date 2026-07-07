@@ -15,7 +15,7 @@ import {
 export const submitClusterToSolana = async (
     clusterData: any,
 ): Promise<string> => {
-    const { cluster_id, name, province, city } = clusterData;
+    const { cluster_id, name, province, city, season } = clusterData;
 
     const clusterIdBN = new BN(String(cluster_id), 10);
 
@@ -30,7 +30,7 @@ export const submitClusterToSolana = async (
 
     try {
         const txSig = await (coreProgram.methods as any)
-            .createCluster(clusterIdBN, name || "", province || "", city || "")
+            .createCluster(clusterIdBN, name || "", province || "", city || "", parseInt(String(season || 0), 10))
             .accounts({
                 cluster: clusterPDA,
                 bridgeConfig: bridgeConfigPDA,

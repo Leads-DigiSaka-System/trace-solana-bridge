@@ -120,6 +120,7 @@ export const submitDistributionToSolana = async (
         from_org_name,
         to_org_type,
         to_org_name,
+        season,
     } = data;
 
     // At the top of submitDistributionToSolana
@@ -289,6 +290,7 @@ export const submitDistributionToSolana = async (
             merkleRoot
                 ? Array.from(Buffer.from(merkleRoot, "hex"))
                 : new Array(32).fill(0),
+            parseInt(String(season || 0), 10),
         )
         .accounts({
             distribution: distPDA,
