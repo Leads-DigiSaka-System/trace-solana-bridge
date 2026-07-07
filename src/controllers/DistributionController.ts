@@ -130,6 +130,7 @@ export const submitDistribution = async (req: Request, res: Response) => {
         const result = await DistributionService.submitDistributionToSolana(
             req.body,
         );
+
         res.status(200).json({
             success: true,
             message: "Distribution submitted to Solana",
@@ -181,6 +182,49 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
         });
     } catch (err: any) {
         console.error("Error updating delivery status:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+/**
+ * @openapi
+ * /distribution/record-qa:
+ *   post:
+ *     summary: Record QA inspection results on Solana (accepted/rejected qty)
+ *     tags: [Distribution]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [distribution_id, accepted_qty, rejected_qty]
+ *             properties:
+ *               distribution_id:
+ *                 type: string
+ *               accepted_qty:
+ *                 type: number
+ *               rejected_qty:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: QA results recorded
+ *       500:
+ *         description: Server error
+ */
+export const recordQa = async (req: Request, res: Response) => {
+    try {
+        const txSig = await DistributionService.recordQaToSolana(req.body);
+        res.status(200).json({
+            success: true,
+            message: "QA results recorded on Solana",
+            transaction_signature: txSig,
+        });
+    } catch (err: any) {
+        console.error("Error recording QA results:", err);
         res.status(500).json({ success: false, message: err.message });
     }
 };
@@ -345,13 +389,16 @@ export const deleteDistribution = async (req: Request, res: Response) => {
  */
 export const submitCheckpoint = async (req: Request, res: Response) => {
     try {
-        const txSig = await DistributionService.submitCheckpointToSolana(
+        const result = await DistributionService.submitCheckpointToSolana(
             req.body,
         );
         res.status(200).json({
             success: true,
-            message: "Checkpoint submitted to Solana",
-            transaction_signature: txSig,
+            message: result.already_exists
+                ? "Checkpoint already recorded on Solana (idempotent)"
+                : "Checkpoint submitted to Solana",
+            transaction_signature: result.transaction_signature,
+            already_exists: result.already_exists ?? false,
         });
     } catch (err: any) {
         console.error("Error submitting checkpoint:", err);
