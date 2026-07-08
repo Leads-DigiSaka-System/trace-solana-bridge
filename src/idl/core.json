@@ -374,6 +374,10 @@
         {
           "name": "city",
           "type": "string"
+        },
+        {
+          "name": "season",
+          "type": "u8"
         }
       ]
     },
@@ -1401,6 +1405,11 @@
       "code": 6001,
       "name": "AlreadyInitialized",
       "msg": "Bridge config has already been initialized"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidSeason",
+      "msg": "Invalid season: must be 0 (wet) or 1 (dry)"
     }
   ],
   "types": [
@@ -1654,6 +1663,10 @@
           },
           {
             "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "season",
             "type": "u8"
           }
         ]

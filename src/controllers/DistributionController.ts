@@ -389,13 +389,16 @@ export const deleteDistribution = async (req: Request, res: Response) => {
  */
 export const submitCheckpoint = async (req: Request, res: Response) => {
     try {
-        const txSig = await DistributionService.submitCheckpointToSolana(
+        const result = await DistributionService.submitCheckpointToSolana(
             req.body,
         );
         res.status(200).json({
             success: true,
-            message: "Checkpoint submitted to Solana",
-            transaction_signature: txSig,
+            message: result.already_exists
+                ? "Checkpoint already recorded on Solana (idempotent)"
+                : "Checkpoint submitted to Solana",
+            transaction_signature: result.transaction_signature,
+            already_exists: result.already_exists ?? false,
         });
     } catch (err: any) {
         console.error("Error submitting checkpoint:", err);
