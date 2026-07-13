@@ -204,6 +204,63 @@
       ]
     },
     {
+      "name": "close_buyback",
+      "docs": [
+        "Close a buyback account (permanently remove from blockchain)"
+      ],
+      "discriminator": [
+        98,
+        233,
+        163,
+        62,
+        120,
+        148,
+        53,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "close_config",
       "docs": [
         "Close the program config (un-initialize)",
@@ -426,6 +483,63 @@
       ]
     },
     {
+      "name": "confirm_payment",
+      "docs": [
+        "Confirm payment for a settled buyback (legacy - kept for compatibility)"
+      ],
+      "discriminator": [
+        221,
+        23,
+        112,
+        126,
+        29,
+        23,
+        159,
+        223
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "create_actor",
       "discriminator": [
         46,
@@ -541,6 +655,10 @@
         {
           "name": "assigned_tps",
           "type": "u64"
+        },
+        {
+          "name": "farmer_signature_key",
+          "type": "string"
         }
       ]
     },
@@ -647,6 +765,116 @@
         {
           "name": "status",
           "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "create_buyback",
+      "docs": [
+        "Create a new buyback agreement",
+        "PDA seeds: [\"buyback\", authority, buyback_id]"
+      ],
+      "discriminator": [
+        156,
+        161,
+        20,
+        48,
+        99,
+        25,
+        129,
+        159
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "farmer_id",
+          "type": "u64"
+        },
+        {
+          "name": "rsbsa_number",
+          "type": "u64"
+        },
+        {
+          "name": "provider_id",
+          "type": "u64"
+        },
+        {
+          "name": "season_id",
+          "type": "u64"
+        },
+        {
+          "name": "farm_size_hectares",
+          "type": "u64"
+        },
+        {
+          "name": "pb_borrowed_price",
+          "type": "u64"
+        },
+        {
+          "name": "premium_per_kg",
+          "type": "u64"
+        },
+        {
+          "name": "input_details",
+          "type": "string"
+        },
+        {
+          "name": "expected_harvest_kg",
+          "type": "u64"
+        },
+        {
+          "name": "contract_pdf_key",
+          "type": "string"
+        },
+        {
+          "name": "farmer_signature_key",
+          "type": "string"
+        },
+        {
+          "name": "staff_signature_key",
+          "type": "string"
         }
       ]
     },
@@ -1185,6 +1413,63 @@
       ]
     },
     {
+      "name": "delete_buyback",
+      "docs": [
+        "Soft delete a buyback (set is_active = 0 and status = cancelled)"
+      ],
+      "discriminator": [
+        10,
+        255,
+        91,
+        102,
+        245,
+        46,
+        66,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "delete_drying",
       "docs": [
         "Soft delete a drying record (set is_active = 0)"
@@ -1355,6 +1640,49 @@
       ]
     },
     {
+      "name": "force_close_buyback",
+      "docs": [
+        "Force-close a buyback account without deserializing its data.",
+        "Use this to clean up accounts with outdated schemas that cannot",
+        "be deserialized by normal instructions."
+      ],
+      "discriminator": [
+        73,
+        8,
+        124,
+        204,
+        203,
+        66,
+        38,
+        46
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "docs": [
+            "program ownership and PDA seeds manually. This allows closing",
+            "accounts that cannot be deserialized due to schema changes."
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "initialize_program",
       "docs": [
         "Initialize the program (one-time setup)",
@@ -1402,6 +1730,163 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "mark_buyback_settled",
+      "docs": [
+        "Mark a pending buyback as settled after payment is complete",
+        "Transitions: to_settle → settled, pay_later → settled"
+      ],
+      "discriminator": [
+        236,
+        116,
+        215,
+        102,
+        239,
+        210,
+        234,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "settle_buyback",
+      "docs": [
+        "Settle a buyback agreement after harvest",
+        "Calculates final prices and records payment details",
+        "New status workflow: active → settled/to_settle/pay_later"
+      ],
+      "discriminator": [
+        250,
+        32,
+        20,
+        144,
+        221,
+        187,
+        195,
+        0
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "actual_harvest_kg",
+          "type": "u64"
+        },
+        {
+          "name": "pm_market_price",
+          "type": "u64"
+        },
+        {
+          "name": "check_number",
+          "type": "string"
+        },
+        {
+          "name": "check_date",
+          "type": "i64"
+        },
+        {
+          "name": "new_status",
+          "type": "u8"
+        },
+        {
+          "name": "target_payment_date",
+          "type": "i64"
+        },
+        {
+          "name": "total_price_signed",
+          "type": "i64"
+        },
+        {
+          "name": "contract_pdf_key",
+          "type": "string"
+        },
+        {
+          "name": "farmer_signature_key",
+          "type": "string"
+        },
+        {
+          "name": "staff_signature_key",
+          "type": "string"
+        }
+      ]
     },
     {
       "name": "update_actor",
@@ -1723,6 +2208,76 @@
       ]
     },
     {
+      "name": "update_in_season",
+      "docs": [
+        "Update in-season tracking data",
+        "Track risks and forecasts during growing season for external verification"
+      ],
+      "discriminator": [
+        12,
+        11,
+        67,
+        36,
+        2,
+        189,
+        192,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "risk_event",
+          "type": "string"
+        },
+        {
+          "name": "forecasted_yield",
+          "type": "u64"
+        },
+        {
+          "name": "major_risk_flag",
+          "type": "u8"
+        }
+      ]
+    },
+    {
       "name": "update_milling",
       "docs": [
         "Update an existing milling record",
@@ -1809,6 +2364,68 @@
         {
           "name": "actual_price",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_payment_schedule",
+      "docs": [
+        "Update payment schedule for a pending buyback (to_settle or pay_later)",
+        "Used when rescheduling payment dates"
+      ],
+      "discriminator": [
+        34,
+        56,
+        134,
+        31,
+        4,
+        78,
+        125,
+        212
+      ],
+      "accounts": [
+        {
+          "name": "buyback",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  121,
+                  98,
+                  97,
+                  99,
+                  107
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "buyback_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_buyback_id",
+          "type": "u64"
+        },
+        {
+          "name": "target_payment_date",
+          "type": "i64"
         }
       ]
     },
@@ -2006,6 +2623,19 @@
       ]
     },
     {
+      "name": "BuybackAccount",
+      "discriminator": [
+        64,
+        188,
+        134,
+        111,
+        248,
+        126,
+        33,
+        46
+      ]
+    },
+    {
       "name": "DryingAccount",
       "discriminator": [
         27,
@@ -2096,6 +2726,56 @@
       "code": 6004,
       "name": "Unauthorized",
       "msg": "Unauthorized: Only super admin can perform this action"
+    },
+    {
+      "code": 6005,
+      "name": "BuybackNotActive",
+      "msg": "Buyback is not active"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidAmount",
+      "msg": "Invalid harvest amount - must be greater than 0"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidMarketPrice",
+      "msg": "Market price out of valid range (₱10-₱100/kg)"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidCheckNumber",
+      "msg": "Check number is required and must not be empty"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidStatusTransition",
+      "msg": "Invalid status transition - not allowed from current state"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidSettlementStatus",
+      "msg": "Settlement status does not match financial outcome"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidStatusForScheduleUpdate",
+      "msg": "Cannot update payment schedule for this status"
+    },
+    {
+      "code": 6012,
+      "name": "BuybackFinalized",
+      "msg": "Buyback is in a final state and cannot be modified"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidStatusValue",
+      "msg": "Invalid status value"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidPDA",
+      "msg": "Invalid PDA: account does not match expected seeds or is not owned by this program"
     }
   ],
   "types": [
@@ -2239,6 +2919,19 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "farmer_signature_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "farmer_signature_key_len",
+            "type": "u8"
           }
         ]
       }
@@ -2315,6 +3008,208 @@
           },
           {
             "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BuybackAccount",
+      "docs": [
+        "Buyback account - represents a buyback record in the supply chain",
+        "PDA seeds: [\"buyback\", authority, buyback_id]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "buyback_id",
+            "type": "u64"
+          },
+          {
+            "name": "farmer_id",
+            "type": "u64"
+          },
+          {
+            "name": "provider_id",
+            "type": "u64"
+          },
+          {
+            "name": "rsbsa_number",
+            "type": "u64"
+          },
+          {
+            "name": "season_id",
+            "type": "u64"
+          },
+          {
+            "name": "pb_borrowed_price",
+            "type": "u64"
+          },
+          {
+            "name": "premium_per_kg",
+            "type": "u64"
+          },
+          {
+            "name": "farm_size_hectares",
+            "type": "u64"
+          },
+          {
+            "name": "input_details",
+            "type": {
+              "array": [
+                "u8",
+                500
+              ]
+            }
+          },
+          {
+            "name": "input_details_len",
+            "type": "u16"
+          },
+          {
+            "name": "expected_harvest_kg",
+            "type": "u64"
+          },
+          {
+            "name": "agreement_date",
+            "type": "i64"
+          },
+          {
+            "name": "risk_events",
+            "type": {
+              "array": [
+                "u8",
+                200
+              ]
+            }
+          },
+          {
+            "name": "risk_events_len",
+            "type": "u8"
+          },
+          {
+            "name": "forecasted_yield",
+            "type": "u64"
+          },
+          {
+            "name": "last_inspection_date",
+            "type": "i64"
+          },
+          {
+            "name": "inspection_count",
+            "type": "u8"
+          },
+          {
+            "name": "major_risk_flag",
+            "type": "u8"
+          },
+          {
+            "name": "actual_harvest_kg",
+            "type": "u64"
+          },
+          {
+            "name": "pm_market_price",
+            "type": "u64"
+          },
+          {
+            "name": "pr_raw_harvest_price",
+            "type": "u64"
+          },
+          {
+            "name": "total_buyback_price",
+            "type": "u64"
+          },
+          {
+            "name": "settlement_date",
+            "type": "i64"
+          },
+          {
+            "name": "check_number",
+            "type": {
+              "array": [
+                "u8",
+                50
+              ]
+            }
+          },
+          {
+            "name": "check_number_len",
+            "type": "u8"
+          },
+          {
+            "name": "check_date",
+            "type": "i64"
+          },
+          {
+            "name": "payment_confirmed",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": "u8"
+          },
+          {
+            "name": "target_payment_date",
+            "type": "i64"
+          },
+          {
+            "name": "target_payment_amount",
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "contract_pdf_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "contract_pdf_key_len",
+            "type": "u8"
+          },
+          {
+            "name": "farmer_signature_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "farmer_signature_key_len",
+            "type": "u8"
+          },
+          {
+            "name": "staff_signature_key",
+            "type": {
+              "array": [
+                "u8",
+                255
+              ]
+            }
+          },
+          {
+            "name": "staff_signature_key_len",
             "type": "u8"
           }
         ]

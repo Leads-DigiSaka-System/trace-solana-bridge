@@ -1,4 +1,3 @@
-import * as anchor from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import BN from "bn.js";
 import {
@@ -9,24 +8,78 @@ import {
     CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
 
+export type SubmitClusterResult = {
+    transaction_signature: string;
+    already_exists?: boolean;
+};
+
 /**
  * Submit a new cluster to Solana
  */
 export const submitClusterToSolana = async (
     clusterData: any,
-): Promise<string> => {
+): Promise<SubmitClusterResult> => {
     const { cluster_id, name, province, city, season } = clusterData;
+
+    if (cluster_id === undefined || cluster_id === null) {
+        throw new Error(
+            "cluster_id is required and must not be null/undefined",
+        );
+    }
 
     const clusterIdBN = new BN(String(cluster_id), 10);
 
     const [clusterPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("cluster"),
-            feePayer.publicKey.toBuffer(),
+            wallet.publicKey.toBuffer(),
             Buffer.from(clusterIdBN.toArray("le", 8)),
         ],
         CORE_PROGRAM_ID,
     );
+
+    const existing =
+        await coreProgram.provider.connection.getAccountInfo(clusterPDA);
+    if (existing !== null) {
+        try {
+            await (coreProgram.account as any).clusterAccount.fetch(
+                clusterPDA,
+            );
+
+            throw new Error(
+                `[STALE_PDA] Cluster PDA for id=${cluster_id} already exists on-chain. ` +
+                    `This Solana account was created by a prior cluster record. ` +
+                    `A new cluster cannot reuse this on-chain account. ` +
+                    `To resolve: close the existing Solana cluster account, then retry creation.`,
+            );
+        } catch (fetchErr: any) {
+            if (fetchErr.message?.includes("[STALE_PDA]")) {
+                throw fetchErr;
+            }
+
+            console.warn(
+                `[SOLANA] Could not fetch on-chain cluster for existing PDA ${clusterPDA.toBase58()}: ${fetchErr.message}. ` +
+                    `Treating as unknown — returning already_exists.`,
+            );
+        }
+
+        const signatures =
+            await coreProgram.provider.connection.getSignaturesForAddress(
+                clusterPDA,
+                { limit: 1 },
+                "confirmed",
+            );
+        const originalSig = signatures?.[0]?.signature ?? "unknown";
+
+        console.warn(
+            `[SOLANA] Cluster PDA already exists for id=${cluster_id}. Original tx: ${originalSig}`,
+        );
+
+        return {
+            transaction_signature: originalSig,
+            already_exists: true,
+        };
+    }
 
     try {
         const txSig = await (coreProgram.methods as any)
@@ -40,7 +93,7 @@ export const submitClusterToSolana = async (
             .signers([feePayer])
             .rpc();
 
-        return txSig;
+        return { transaction_signature: txSig };
     } catch (err: any) {
         throw new Error(
             `Failed to execute Anchor createCluster: ${err.message}`,
@@ -62,7 +115,7 @@ export const addFarmerToClusterOnSolana = async (
     const [clusterPDA] = PublicKey.findProgramAddressSync(
         [
             Buffer.from("cluster"),
-            feePayer.publicKey.toBuffer(),
+            wallet.publicKey.toBuffer(),
             Buffer.from(clusterIdBN.toArray("le", 8)),
         ],
         CORE_PROGRAM_ID,

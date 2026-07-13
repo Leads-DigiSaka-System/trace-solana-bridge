@@ -234,4 +234,54 @@ export declare const submitTransactionToSolana: (transactionData: any) => Promis
  * @returns true if transaction exists, false otherwise
  */
 export declare const checkTransactionExistsOnSolana: (nonce: number | string) => Promise<boolean>;
+/**
+ * Submit a new buyback agreement to Solana
+ */
+export declare const submitBuybackToSolana: (buybackData: any) => Promise<string>;
+/**
+ * Check if a buyback exists on Solana
+ */
+export declare const checkBuybackExistsOnSolana: (buybackId: any) => Promise<{
+    exists: boolean;
+    pda?: string;
+    accountData?: any;
+}>;
+/**
+ * Get a buyback from Solana
+ */
+export declare const getBuybackFromSolana: (buybackId: any) => Promise<any>;
+/**
+ * Update in-season tracking data for a buyback
+ */
+export declare const updateInSeasonOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Settle a buyback agreement with new status workflow
+ * Supports: active → settled/to_settle/pay_later
+ */
+export declare const settleBuybackOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Update payment schedule for a pending buyback (to_settle or pay_later)
+ */
+export declare const updatePaymentScheduleOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Mark a pending buyback as settled (to_settle/pay_later → settled)
+ */
+export declare const markBuybackSettledOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Confirm payment for a settled buyback
+ */
+export declare const confirmBuybackPaymentOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Soft delete a buyback (set is_active = 0)
+ */
+export declare const deleteBuybackOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Close a buyback account (permanently remove, return rent)
+ */
+export declare const closeBuybackOnSolana: (buybackData: any) => Promise<string>;
+/**
+ * Force-close a buyback account without deserializing.
+ * Bypasses schema validation — works on accounts with outdated layouts.
+ */
+export declare const forceCloseBuybackOnSolana: (buybackData: any) => Promise<string>;
 //# sourceMappingURL=solanaService.d.ts.map

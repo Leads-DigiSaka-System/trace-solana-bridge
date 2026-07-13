@@ -10,6 +10,7 @@ import {
     CORE_PROGRAM_ID,
 } from "../config/solanaConfig.js";
 import { buildItemsMerkleTree, generateProof } from "../utils/merkle.js";
+import { deriveOrganizationPda } from "../utils/pda.js";
 import { submitOrganizationToSolana } from "./OrganizationService.js";
 
 /**
@@ -232,24 +233,9 @@ export const submitDistributionToSolana = async (
         };
     }
 
-    // Derive Org PDAs: [b"organization", authority, org_id]
-    const [fromOrgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            wallet.publicKey.toBuffer(),
-            Buffer.from(fromOrgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
-
-    const [toOrgPDA] = PublicKey.findProgramAddressSync(
-        [
-            Buffer.from("organization"),
-            wallet.publicKey.toBuffer(),
-            Buffer.from(toOrgIdBN.toArray("le", 8)),
-        ],
-        CORE_PROGRAM_ID,
-    );
+    // Derive Core org PDAs (must match OrganizationService + on-chain validate_org*)
+    const [fromOrgPDA] = deriveOrganizationPda(fromOrgIdBN);
+    const [toOrgPDA] = deriveOrganizationPda(toOrgIdBN);
 
     // Auto-init Organizations if they don't exist on-chain
     await ensureOrganizationExists(
@@ -291,6 +277,7 @@ export const submitDistributionToSolana = async (
                 ? Array.from(Buffer.from(merkleRoot, "hex"))
                 : new Array(32).fill(0),
             parseInt(String(season || 0), 10),
+            parseInt(String(data.has_paid || 0), 10),
         )
         .accounts({
             distribution: distPDA,
@@ -312,8 +299,18 @@ export const submitDistributionToSolana = async (
     };
 };
 
+async function isCoreOrganizationAccount(pda: PublicKey): Promise<boolean> {
+    const accInfo =
+        await distributionProgram.provider.connection.getAccountInfo(
+            pda,
+            "confirmed",
+        );
+    return accInfo !== null && accInfo.owner.equals(CORE_PROGRAM_ID);
+}
+
 /**
- * Check if organization exists on-chain, initialize if missing
+ * Ensure a Core OrganizationAccount exists for org_id before create_distribution.
+ * Provisions partner orgs (e.g. 10015) that exist in MySQL but not yet on-chain.
  */
 async function ensureOrganizationExists(
     orgId: any,
@@ -323,31 +320,47 @@ async function ensureOrganizationExists(
 ): Promise<void> {
     if (!orgId || Number(orgId) === 0) return;
 
-    try {
-        const accInfo =
-            await distributionProgram.provider.connection.getAccountInfo(pda);
-        if (!accInfo || !accInfo.owner.equals(CORE_PROGRAM_ID)) {
-            console.log(
-                `[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`,
-            );
-            await submitOrganizationToSolana({
-                org_id: orgId,
-                name: name || `Organization ${orgId}`,
-                org_type: orgType || 0,
-                province: "",
-                city: "",
-                contact_person: "",
-            });
-            console.log(
-                `[SOLANA] Organization ${orgId} auto-initialized successfully.`,
-            );
-        }
-    } catch (err) {
-        console.warn(
-            `[SOLANA] Failed to check/init organization ${orgId}:`,
-            err,
+    const [expectedPda] = deriveOrganizationPda(orgId);
+    if (!pda.equals(expectedPda)) {
+        throw new Error(
+            `[SOLANA] Organization PDA mismatch for org_id=${orgId}: ` +
+                `expected ${expectedPda.toBase58()}, got ${pda.toBase58()}`,
         );
     }
+
+    if (await isCoreOrganizationAccount(expectedPda)) {
+        return;
+    }
+
+    console.log(
+        `[SOLANA] Organization ${orgId} missing or not owned by Core. Auto-initializing...`,
+    );
+
+    const txSig = await submitOrganizationToSolana({
+        org_id: orgId,
+        name: name || `Organization ${orgId}`,
+        org_type: orgType ?? 0,
+        province: "",
+        city: "",
+        contact_person: "",
+    });
+
+    const maxAttempts = 20;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (await isCoreOrganizationAccount(expectedPda)) {
+            console.log(
+                `[SOLANA] Organization ${orgId} auto-initialized successfully (tx ${txSig}).`,
+            );
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    throw new Error(
+        `[SOLANA] Organization ${orgId} createOrganization tx was sent (${txSig}) ` +
+            `but no Core OrganizationAccount appeared at ${expectedPda.toBase58()}. ` +
+            `Register this org on Core (see scripts/syncOrganizations.js) before submitting distributions.`,
+    );
 }
 
 /**
@@ -440,6 +453,44 @@ export const updateDeliveryStatusToSolana = async (
                 );
             return signatures?.[0]?.signature ?? "unknown";
         }
+        throw err;
+    }
+};
+
+/**
+ * Update payment status
+ */
+export const updatePaymentStatusToSolana = async (
+    data: any,
+): Promise<string> => {
+    const { distribution_id, has_paid } = data;
+    const distIdBN = new BN(String(distribution_id), 10);
+
+    const [distPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
+        DISTRIBUTION_PROGRAM_ID,
+    );
+
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .updatePaymentStatus(
+                distIdBN,
+                parseInt(String(has_paid || 0), 10)
+            )
+            .accounts({
+                distribution: distPDA,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        return txSig;
+    } catch (err: any) {
         throw err;
     }
 };
