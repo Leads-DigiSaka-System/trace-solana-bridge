@@ -658,6 +658,10 @@
         {
           "name": "season",
           "type": "u8"
+        },
+        {
+          "name": "has_paid",
+          "type": "u8"
         }
       ]
     },
@@ -1342,6 +1346,92 @@
           "type": "i64"
         }
       ]
+    },
+    {
+      "name": "update_payment_status",
+      "docs": [
+        "Update the payment status of a distribution.",
+        "Only the admin authority (bridge authority acting on behalf of an RBAC admin) can call this.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        35,
+        188,
+        115,
+        202,
+        157,
+        55,
+        198,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "has_paid",
+          "type": "u8"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1443,6 +1533,11 @@
       "code": 6008,
       "name": "InvalidSeason",
       "msg": "Invalid season: must be 0 (wet) or 1 (dry)"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidBooleanValue",
+      "msg": "Invalid boolean value: must be 0 or 1"
     }
   ],
   "types": [
@@ -1888,6 +1983,10 @@
           },
           {
             "name": "season",
+            "type": "u8"
+          },
+          {
+            "name": "has_paid",
             "type": "u8"
           }
         ]
