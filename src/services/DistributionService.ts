@@ -291,6 +291,7 @@ export const submitDistributionToSolana = async (
                 ? Array.from(Buffer.from(merkleRoot, "hex"))
                 : new Array(32).fill(0),
             parseInt(String(season || 0), 10),
+            parseInt(String(data.has_paid || 0), 10),
         )
         .accounts({
             distribution: distPDA,
@@ -440,6 +441,44 @@ export const updateDeliveryStatusToSolana = async (
                 );
             return signatures?.[0]?.signature ?? "unknown";
         }
+        throw err;
+    }
+};
+
+/**
+ * Update payment status
+ */
+export const updatePaymentStatusToSolana = async (
+    data: any,
+): Promise<string> => {
+    const { distribution_id, has_paid } = data;
+    const distIdBN = new BN(String(distribution_id), 10);
+
+    const [distPDA] = PublicKey.findProgramAddressSync(
+        [
+            Buffer.from("dist"),
+            wallet.publicKey.toBuffer(),
+            Buffer.from(distIdBN.toArray("le", 8)),
+        ],
+        DISTRIBUTION_PROGRAM_ID,
+    );
+
+    try {
+        const txSig = await (distributionProgram.methods as any)
+            .updatePaymentStatus(
+                distIdBN,
+                parseInt(String(has_paid || 0), 10)
+            )
+            .accounts({
+                distribution: distPDA,
+                bridgeConfig: distributionBridgeConfigPDA,
+                authority: wallet.publicKey,
+            })
+            .signers([feePayer])
+            .rpc();
+
+        return txSig;
+    } catch (err: any) {
         throw err;
     }
 };

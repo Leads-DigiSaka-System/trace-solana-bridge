@@ -188,6 +188,48 @@ export const updateDeliveryStatus = async (req: Request, res: Response) => {
 
 /**
  * @openapi
+ * /distribution/update-payment-status:
+ *   post:
+ *     summary: Update payment status on Solana
+ *     tags: [Distribution]
+ *     security:
+ *       - hmacAuth: []
+ *       - timestamp: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               distribution_id:
+ *                 type: string
+ *               has_paid:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Payment status updated
+ *       500:
+ *         description: Server error
+ */
+export const updatePaymentStatus = async (req: Request, res: Response) => {
+    try {
+        const txSig = await DistributionService.updatePaymentStatusToSolana(
+            req.body,
+        );
+        res.status(200).json({
+            success: true,
+            message: "Payment status updated on Solana",
+            transaction_signature: txSig,
+        });
+    } catch (err: any) {
+        console.error("Error updating payment status:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+/**
+ * @openapi
  * /distribution/record-qa:
  *   post:
  *     summary: Record QA inspection results on Solana (accepted/rejected qty)
