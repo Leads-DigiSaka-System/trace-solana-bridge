@@ -654,6 +654,14 @@
               32
             ]
           }
+        },
+        {
+          "name": "season",
+          "type": "u8"
+        },
+        {
+          "name": "has_paid",
+          "type": "u8"
         }
       ]
     },
@@ -1092,6 +1100,98 @@
       ]
     },
     {
+      "name": "record_qa",
+      "docs": [
+        "Record QA inspection results while distribution is in RECEIVED state.",
+        "Sets accepted_qty and rejected_qty on the distribution record.",
+        "Can be called multiple times — each call overwrites previous values,",
+        "allowing the warehouse to correct counts before confirming.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        226,
+        35,
+        227,
+        219,
+        229,
+        221,
+        169,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "accepted_qty",
+          "type": "u64"
+        },
+        {
+          "name": "rejected_qty",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "update_bridge_authority",
       "docs": [
         "Transfer the bridge authority to a new wallet.",
@@ -1246,6 +1346,92 @@
           "type": "i64"
         }
       ]
+    },
+    {
+      "name": "update_payment_status",
+      "docs": [
+        "Update the payment status of a distribution.",
+        "Only the admin authority (bridge authority acting on behalf of an RBAC admin) can call this.",
+        "",
+        "C-1: authority must equal bridge_config.bridge_authority."
+      ],
+      "discriminator": [
+        35,
+        188,
+        115,
+        202,
+        157,
+        55,
+        198,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "distribution",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "arg",
+                "path": "distribution_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bridge_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  114,
+                  105,
+                  100,
+                  103,
+                  101,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "_distribution_id",
+          "type": "u64"
+        },
+        {
+          "name": "has_paid",
+          "type": "u8"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -1342,6 +1528,16 @@
       "code": 6007,
       "name": "PerformanceOrgTypeExcluded",
       "msg": "Performance scoring is not tracked for FCA organizations"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidSeason",
+      "msg": "Invalid season: must be 0 (wet) or 1 (dry)"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidBooleanValue",
+      "msg": "Invalid boolean value: must be 0 or 1"
     }
   ],
   "types": [
@@ -1724,6 +1920,18 @@
             "type": "u64"
           },
           {
+            "name": "received_at",
+            "type": "i64"
+          },
+          {
+            "name": "accepted_qty",
+            "type": "u64"
+          },
+          {
+            "name": "rejected_qty",
+            "type": "u64"
+          },
+          {
             "name": "recipient_signature",
             "type": {
               "array": [
@@ -1771,6 +1979,14 @@
           },
           {
             "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "season",
+            "type": "u8"
+          },
+          {
+            "name": "has_paid",
             "type": "u8"
           }
         ]

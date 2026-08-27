@@ -201,3 +201,12 @@ export const checkTransactionExistsOnSolana = async (
         return false;
     return true;
 };
+/**
+ * Get the status of a transaction signature
+ */
+export const getSignatureStatus = async (signature: string): Promise<any> => {
+    const status = await connection.getSignatureStatus(signature, {
+        searchTransactionHistory: true,
+    });
+    return status.value;
+};

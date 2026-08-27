@@ -28,6 +28,12 @@ router.post(
     DistributionController.updateDeliveryStatus,
 );
 router.post(
+    "/update-payment-status",
+    verifyHmac,
+    DistributionController.updatePaymentStatus,
+);
+router.post("/record-qa", verifyHmac, DistributionController.recordQa);
+router.post(
     "/confirm-receipt",
     verifyHmac,
     DistributionController.confirmReceipt,
