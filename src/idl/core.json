@@ -4,7 +4,7 @@
     "name": "digisaka_core",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "DigiSaka core program – actor registry and cluster management"
+    "description": "Digisaka core program – actor registry and cluster management"
   },
   "instructions": [
     {

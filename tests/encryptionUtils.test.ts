@@ -10,7 +10,7 @@ describe("encryptionUtils", () => {
     const key = crypto.randomBytes(32).toString("hex");
 
     test("should encrypt and decrypt a string", () => {
-        const text = "Hello DigiSaka!";
+        const text = "Hello Digisaka!";
         const encrypted = encrypt(text, key);
         expect(encrypted.length).toBeGreaterThan(16); // IV (16) + at least one block (16)
 

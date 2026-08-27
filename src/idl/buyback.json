@@ -4,7 +4,7 @@
         "name": "buyback",
         "version": "0.1.0",
         "spec": "0.1.0",
-        "description": "DigiSaka buyback program – purchase agreements"
+        "description": "Digisaka buyback program – purchase agreements"
     },
     "instructions": [
         {
