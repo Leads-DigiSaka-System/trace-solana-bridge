@@ -90,7 +90,11 @@ export class LaravelOutboundClient {
         url.searchParams.set("limit", String(limit));
         url.searchParams.set("after_id", "0");
         url.searchParams.set("domain", "buyback.*");
-        const body = await this.requestJson(url, { method: "GET" }, signal);
+        const body = await this.requestJson(
+            url,
+            { method: "GET", headers: this.headers() },
+            signal,
+        );
         const data = this.unwrapData(body);
         if (!isObject(data) || !Array.isArray(data.items)) {
             throw new LaravelApiError("Pending response did not contain data.items", 502, true);

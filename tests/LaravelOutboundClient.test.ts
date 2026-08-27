@@ -68,6 +68,10 @@ describe("LaravelOutboundClient", () => {
         await expect(api.pending(10)).resolves.toEqual({ items: [item], rejected: [] });
         await expect(api.claim(item, "worker-1")).resolves.toEqual(item);
 
+        const firstCall = (fetchMock as unknown as jest.Mock).mock.calls[0] as [URL, RequestInit];
+        expect((firstCall[1].headers as Record<string, string>).authorization).toBe(
+            "Bearer test-token-that-is-long-enough",
+        );
         const secondCall = (fetchMock as unknown as jest.Mock).mock.calls[1] as [URL, RequestInit];
         expect(JSON.parse(String(secondCall[1].body))).toEqual({ ids: [41], worker_id: "worker-1" });
     });
