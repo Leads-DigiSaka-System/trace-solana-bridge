@@ -39,6 +39,8 @@ Current tests are **service-level unit tests** that validate:
 - **Anchor method wiring** (that the service calls the expected Anchor instruction builder)
 - **RPC submission flow** (`.rpc()` returning a mocked tx signature)
 - **Existence checks** where applicable (`connection.getAccountInfo`)
+- **Durable BUYBACK outbound worker contracts**, memo privacy, payload hashing, trusted origins,
+  HMAC replay protection, configuration aliases, and the mainnet safety lock
 
 Files:
 
@@ -46,6 +48,10 @@ Files:
 - `tests/BatchService.test.ts`
 - `tests/DistributionService.test.ts`
 - `tests/CoreServices.test.ts` (Organization/Validator/Cluster services)
+- `tests/OutboundMemo.test.ts`
+- `tests/LaravelOutboundClient.test.ts`
+- `tests/HmacAuth.test.ts`
+- `tests/OutboundWorkerConfig.test.ts`
 
 ## Mocking strategy (important)
 

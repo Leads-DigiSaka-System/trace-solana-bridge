@@ -6,8 +6,12 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "node --env-file=.env dist/server.js",
-    "start": "node dist/server.js",
+    "dev": "node --env-file=.env dist/worker.js",
+    "start": "node dist/worker.js",
+    "worker": "node dist/worker.js",
+    "worker:dev": "node --env-file=.env dist/worker.js",
+    "api": "node dist/server.js",
+    "api:dev": "node --env-file=.env dist/server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "keywords": [],

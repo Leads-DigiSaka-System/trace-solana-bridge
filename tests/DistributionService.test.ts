@@ -7,15 +7,23 @@ jest.unstable_mockModule("../src/config/solanaConfig.js", () => {
     return {
         feePayer: { publicKey: pubkey },
         wallet: { publicKey: pubkey },
+        coreProgram: { methods: {} },
         distributionProgram: {
+            provider: {
+                connection: {
+                    getAccountInfo: jest.fn().mockResolvedValue(null),
+                },
+            },
             methods: {
                 submitActorPerformance: jest.fn().mockReturnThis(),
                 recordDeliveryPerformance: jest.fn().mockReturnThis(),
                 submitDistribution: jest.fn().mockReturnThis(),
+                createDistribution: jest.fn().mockReturnThis(),
                 addCheckpoint: jest.fn().mockReturnThis(),
             },
         },
         distributionBridgeConfigPDA: pubkey,
+        bridgeConfigPDA: pubkey,
         DISTRIBUTION_PROGRAM_ID: pubkey,
         CORE_PROGRAM_ID: pubkey,
     };
@@ -26,7 +34,7 @@ const {
     submitDistributionToSolana,
     submitCheckpointToSolana,
 } = await import("../src/services/DistributionService.js");
-const { distributionProgram, DISTRIBUTION_PROGRAM_ID } =
+const { distributionProgram, DISTRIBUTION_PROGRAM_ID, feePayer } =
     await import("../src/config/solanaConfig.js");
 
 describe("DistributionService", () => {
@@ -37,9 +45,7 @@ describe("DistributionService", () => {
     it("should correctly submit actor performance", async () => {
         const data = { actor_id: "123", performance_score: 95 };
         const mockRpc = jest.fn().mockResolvedValue("mock_tx_sig");
-        (
-            distributionProgram.methods.submitActorPerformance as any
-        ).mockReturnValue({
+        (distributionProgram.methods.recordDeliveryPerformance as any).mockReturnValue({
             accounts: jest.fn().mockReturnThis(),
             signers: jest.fn().mockReturnThis(),
             rpc: mockRpc,
@@ -51,14 +57,15 @@ describe("DistributionService", () => {
         const actorIdBN = new BN("123", 10);
         const [expectedPerformancePDA] = PublicKey.findProgramAddressSync(
             [
-                Buffer.from("performance"),
+                Buffer.from("perf"),
+                feePayer.publicKey.toBuffer(),
                 Buffer.from(actorIdBN.toArray("le", 8)),
             ],
             DISTRIBUTION_PROGRAM_ID,
         );
 
         const accountsMethod = (
-            distributionProgram.methods.submitActorPerformance as any
+            distributionProgram.methods.recordDeliveryPerformance as any
         ).mock.results[0].value.accounts;
         expect(accountsMethod).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -75,7 +82,7 @@ describe("DistributionService", () => {
             receiver_id: "2",
         };
         const mockRpc = jest.fn().mockResolvedValue("mock_tx_sig");
-        (distributionProgram.methods.submitDistribution as any).mockReturnValue(
+        (distributionProgram.methods.createDistribution as any).mockReturnValue(
             {
                 accounts: jest.fn().mockReturnThis(),
                 signers: jest.fn().mockReturnThis(),
@@ -84,9 +91,9 @@ describe("DistributionService", () => {
         );
 
         const txSig = await submitDistributionToSolana(data);
-        expect(txSig).toBe("mock_tx_sig");
+        expect(txSig).toEqual(expect.objectContaining({ transaction_signature: "mock_tx_sig" }));
         expect(
-            distributionProgram.methods.submitDistribution,
+            distributionProgram.methods.createDistribution,
         ).toHaveBeenCalled();
     });
 
@@ -104,7 +111,7 @@ describe("DistributionService", () => {
         });
 
         const txSig = await submitCheckpointToSolana(data);
-        expect(txSig).toBe("mock_tx_sig");
+        expect(txSig).toEqual({ transaction_signature: "mock_tx_sig" });
         expect(distributionProgram.methods.addCheckpoint).toHaveBeenCalled();
     });
 });

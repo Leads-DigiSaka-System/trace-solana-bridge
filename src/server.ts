@@ -2,7 +2,6 @@ import express, {
     type Express,
     type Request,
     type Response,
-    type NextFunction,
 } from "express";
 import dotenv from "dotenv";
 import apiRoutes from "./routes/index.js";
@@ -14,43 +13,25 @@ dotenv.config();
 
 const app: Express = express();
 
-// Capture raw body for HMAC verification before parsing JSON
-// This middleware must run BEFORE express.json() to capture the raw request body
-app.use((req: Request, res: Response, next: NextFunction) => {
-    // Only capture body for POST/PUT/PATCH/DELETE requests
-    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
-        let rawBody = "";
-        req.on("data", (chunk: Buffer) => {
-            rawBody += chunk.toString("utf8");
-        });
-        req.on("end", () => {
-            // Store raw body for HMAC middleware to use
-            (req as any).rawBody = rawBody;
-            // Manually parse JSON and attach to req.body so routes can use it
-            try {
-                req.body = rawBody ? JSON.parse(rawBody) : {};
-            } catch (e) {
-                req.body = {};
-            }
-            next();
-        });
-    } else {
-        // For GET requests, no body to capture
-        next();
-    }
-});
+// Keep exact, bounded body bytes for HMAC verification. Express rejects
+// malformed JSON rather than silently replacing it with an empty object.
+app.use(
+    express.json({
+        limit: process.env.REQUEST_BODY_LIMIT || "256kb",
+        verify: (req, _res, buffer) => {
+            (req as Request & { rawBody?: string }).rawBody = buffer.toString("utf8");
+        },
+    }),
+);
 
 const PORT = process.env.NODE_SERVICE_PORT || 3000;
 
 // Log HMAC auth status on startup
 console.log("========================================");
-console.log(
-    "HMAC Authentication:",
-    process.env.SKIP_HMAC_AUTH === "true" ? "⚠️  DISABLED" : "✅ ENABLED",
-);
-if (process.env.SKIP_HMAC_AUTH === "true") {
-    console.log("WARNING: HMAC auth is disabled. Enable for production!");
-}
+const hmacBypass =
+    process.env.SKIP_HMAC_AUTH === "true" &&
+    (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test");
+console.log("HMAC Authentication:", hmacBypass ? "DISABLED (local development only)" : "ENABLED");
 console.log("========================================");
 
 // --- API ROUTES ---

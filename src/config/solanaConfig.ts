@@ -1,7 +1,8 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import * as dotenv from "dotenv";
 import type { Idl } from "@coral-xyz/anchor";
+import { loadFeePayerFromEnv } from "./outboundWorkerConfig.js";
 
 // IDL imports
 import coreIdl from "../idl/core.json" with { type: "json" };
@@ -19,7 +20,7 @@ const requiredEnvVars = [
     "SOLANA_DISTRIBUTION_PROGRAM_ID",
     "SOLANA_TRACING_PROGRAM_ID",
     "SOLANA_CARBON_PROGRAM_ID",
-    "SOLANA_FEE_PAYER_SECRET_KEY",
+    "SOLANA_RPC_URL",
 ];
 
 for (const envVar of requiredEnvVars) {
@@ -28,45 +29,39 @@ for (const envVar of requiredEnvVars) {
     }
 }
 
-// Program IDs
-export const CORE_PROGRAM_ID = new PublicKey(
-    process.env.SOLANA_CORE_PROGRAM_ID!,
+function validatedProgramId(envName: string, idl: unknown): PublicKey {
+    const configured = new PublicKey(process.env[envName]!);
+    const idlAddress = (idl as { address?: unknown }).address;
+    if (typeof idlAddress !== "string" || configured.toBase58() !== idlAddress) {
+        throw new Error(`CRITICAL: ${envName} does not match the deployed address in its IDL`);
+    }
+    return configured;
+}
+
+// Fail closed if deployment configuration and the bundled interfaces disagree.
+export const CORE_PROGRAM_ID = validatedProgramId("SOLANA_CORE_PROGRAM_ID", coreIdl);
+export const BUYBACK_PROGRAM_ID = validatedProgramId("SOLANA_BUYBACK_PROGRAM_ID", buybackIdl);
+export const DISTRIBUTION_PROGRAM_ID = validatedProgramId(
+    "SOLANA_DISTRIBUTION_PROGRAM_ID",
+    distributionIdl,
 );
-export const BUYBACK_PROGRAM_ID = new PublicKey(
-    process.env.SOLANA_BUYBACK_PROGRAM_ID!,
-);
-export const DISTRIBUTION_PROGRAM_ID = new PublicKey(
-    process.env.SOLANA_DISTRIBUTION_PROGRAM_ID!,
-);
-export const TRACING_PROGRAM_ID = new PublicKey(
-    process.env.SOLANA_TRACING_PROGRAM_ID!,
-);
-export const CARBON_PROGRAM_ID = new PublicKey(
-    process.env.SOLANA_CARBON_PROGRAM_ID!,
-);
+export const TRACING_PROGRAM_ID = validatedProgramId("SOLANA_TRACING_PROGRAM_ID", tracingIdl);
+export const CARBON_PROGRAM_ID = validatedProgramId("SOLANA_CARBON_PROGRAM_ID", carbonIdl);
 
 // Connection
 export const connection = new Connection(
-    process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
-    "processed",
+    process.env.SOLANA_RPC_URL!,
+    "finalized",
 );
 
 // Fee payer
-let secret: number[];
-try {
-    secret = JSON.parse(process.env.SOLANA_FEE_PAYER_SECRET_KEY!);
-} catch {
-    throw new Error(
-        "SOLANA_FEE_PAYER_SECRET_KEY must be a valid JSON array of numbers",
-    );
-}
-
-export const feePayer = Keypair.fromSecretKey(new Uint8Array(secret));
+export const feePayer = loadFeePayerFromEnv(process.env);
 
 // Provider / Wallet
 export const wallet = new anchor.Wallet(feePayer);
 export const provider = new anchor.AnchorProvider(connection, wallet, {
-    preflightCommitment: "confirmed",
+    commitment: "finalized",
+    preflightCommitment: "finalized",
 });
 
 anchor.setProvider(provider);

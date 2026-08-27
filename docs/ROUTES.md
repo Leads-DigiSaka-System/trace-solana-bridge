@@ -16,13 +16,14 @@ Most mutating routes require **HMAC authentication** via `verifyHmac` middleware
 - **Required headers**:
   - `x-hmac-signature`: hex HMAC-SHA256
   - `x-timestamp`: unix timestamp in **milliseconds**
+  - `x-hmac-nonce`: unique 16-128 character request identifier
 - **Signing format**: HMAC over the exact string:
 
-  `"{timestamp}.{rawBodyJsonString}"`
+  `"{UPPERCASE_METHOD}\n{originalPathAndQuery}\n{timestamp}\n{nonce}\n{rawBodyJsonString}"`
 
   where `rawBodyJsonString` is the **raw request body** as received (the server captures it before JSON parsing).
-- **Replay protection**: requests older than ~5 minutes are rejected.
-- **Dev bypass**: `SKIP_HMAC_AUTH=true` disables auth checks (do not use in production).
+- **Replay protection**: requests older than ~5 minutes and reused nonces are rejected.
+- **Dev bypass**: requires both `SKIP_HMAC_AUTH=true` and `NODE_ENV=development` or `test`.
 
 ## Routes
 
@@ -97,16 +98,8 @@ Season:
 
 ### Buybacks
 
-- **POST** `/api/v1/submit-buyback` — **HMAC**
-- **GET** `/api/v1/check-buyback/:buybackId` — **NONE**
-- **GET** `/api/v1/get-buyback/:buybackId` — **NONE**
-- **POST** `/api/v1/update-in-season` — **HMAC**
-- **POST** `/api/v1/settle-buyback` — **HMAC**
-- **POST** `/api/v1/confirm-buyback-payment` — **HMAC**
-- **POST** `/api/v1/update-payment-schedule` — **HMAC**
-- **POST** `/api/v1/mark-buyback-settled` — **HMAC**
-- **POST** `/api/v1/delete-buyback` — **HMAC**
-- **POST** `/api/v1/close-buyback` — **HMAC**
+The legacy mutable Anchor BUYBACK routes are intentionally not mounted. BUYBACK proofs are
+written only by the durable Laravel outbound worker described in the repository README.
 
 ### Organizations (Core program)
 

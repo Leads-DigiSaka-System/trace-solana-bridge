@@ -32,12 +32,19 @@ const options: swaggerJsdoc.Options = {
                     name: "x-timestamp",
                     description: "Timestamp used for HMAC generation.",
                 },
+                nonce: {
+                    type: "apiKey",
+                    in: "header",
+                    name: "x-hmac-nonce",
+                    description: "Unique 16-128 character request nonce.",
+                },
             },
         },
         security: [
             {
                 hmacAuth: [],
                 timestamp: [],
+                nonce: [],
             },
         ],
     },

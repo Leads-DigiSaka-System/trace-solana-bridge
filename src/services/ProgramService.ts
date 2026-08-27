@@ -7,6 +7,10 @@ import {
     coreProgram,
     bridgeConfigPDA,
     CORE_PROGRAM_ID,
+    BUYBACK_PROGRAM_ID,
+    DISTRIBUTION_PROGRAM_ID,
+    TRACING_PROGRAM_ID,
+    CARBON_PROGRAM_ID,
 } from "../config/solanaConfig.js";
 
 /**
@@ -14,9 +18,18 @@ import {
  */
 export const checkProgramInitialization = async (): Promise<boolean> => {
     try {
-        const acc = await connection.getAccountInfo(CORE_PROGRAM_ID);
-        if (acc === null) return false;
-        return true;
+        const programIds = [
+            CORE_PROGRAM_ID,
+            BUYBACK_PROGRAM_ID,
+            DISTRIBUTION_PROGRAM_ID,
+            TRACING_PROGRAM_ID,
+            CARBON_PROGRAM_ID,
+        ];
+        const [programAccounts, bridgeConfig] = await Promise.all([
+            connection.getMultipleAccountsInfo(programIds, "finalized"),
+            connection.getAccountInfo(bridgeConfigPDA, "finalized"),
+        ]);
+        return programAccounts.every((account) => account?.executable === true) && bridgeConfig !== null;
     } catch (err) {
         console.error("Error during program initialization check:", err);
         throw new Error("Failed to communicate with Solana RPC");
