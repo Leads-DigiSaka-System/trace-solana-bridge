@@ -6,6 +6,7 @@ import {
     updateTransactionOnSolana,
     getSignatureStatus,
 } from "../services/TransactionService.js";
+import { routeParam } from "./routeParam.js";
 
 /**
  * @openapi
@@ -78,7 +79,7 @@ export const submitTransaction = async (req: Request, res: Response) => {
  */
 export const checkTransaction = async (req: Request, res: Response) => {
     try {
-        const nonceParam = req.params.nonce;
+        const nonceParam = routeParam(req.params.nonce);
         if (!nonceParam)
             return res
                 .status(400)
@@ -183,7 +184,7 @@ export const updateTransaction = async (req: Request, res: Response) => {
  */
 export const getTransactionStatus = async (req: Request, res: Response) => {
     try {
-        const { signature } = req.params;
+        const signature = routeParam(req.params.signature);
         if (!signature) {
             return res.status(400).json({ success: false, error: "Signature is required" });
         }

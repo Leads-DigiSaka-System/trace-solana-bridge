@@ -7,6 +7,7 @@ import {
     deleteActorOnSolana,
     closeActorOnSolana,
 } from "../services/ActorService.js";
+import { routeParam } from "./routeParam.js";
 
 /**
  * @openapi
@@ -95,7 +96,7 @@ export const submitActor = async (req: Request, res: Response) => {
  */
 export const checkActor = async (req: Request, res: Response) => {
     try {
-        const actorIdParam = req.params.actorId;
+        const actorIdParam = routeParam(req.params.actorId);
         if (!actorIdParam) {
             return res.status(400).json({
                 success: false,
@@ -115,8 +116,8 @@ export const checkActor = async (req: Request, res: Response) => {
         res.status(500).json({
             success: false,
             error: error.message || "Internal server error",
-            actor_id: req.params.actorId
-                ? parseInt(req.params.actorId, 10)
+            actor_id: routeParam(req.params.actorId)
+                ? parseInt(routeParam(req.params.actorId)!, 10)
                 : null,
         });
     }
@@ -144,7 +145,7 @@ export const checkActor = async (req: Request, res: Response) => {
  */
 export const getActor = async (req: Request, res: Response) => {
     try {
-        const actorIdParam = req.params.actorId;
+        const actorIdParam = routeParam(req.params.actorId);
         if (!actorIdParam) {
             return res.status(400).json({
                 success: false,
@@ -163,8 +164,8 @@ export const getActor = async (req: Request, res: Response) => {
         res.status(500).json({
             success: false,
             error: error.message || "Internal server error",
-            actor_id: req.params.actorId
-                ? parseInt(req.params.actorId, 10)
+            actor_id: routeParam(req.params.actorId)
+                ? parseInt(routeParam(req.params.actorId)!, 10)
                 : null,
         });
     }

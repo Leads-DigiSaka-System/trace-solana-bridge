@@ -4,8 +4,9 @@ const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const DOMAIN_PATTERN = /^[a-z0-9._-]{1,80}$/;
 
 /**
- * Build the complete on-chain payload. It deliberately contains hashes and
- * database identifiers only; the canonical buyback JSON never leaves Laravel.
+ * Build the complete on-chain payload. Only the opaque payload digest is
+ * published: database ids, domain names, versions, and chain links remain in
+ * Laravel so observers cannot infer a farmer's BUYBACK lifecycle from Memo.
  */
 export function buildAnchorMemo(item: OutboundItem): string {
     if (!Number.isSafeInteger(item.id) || item.id <= 0) {
@@ -34,15 +35,27 @@ export function buildAnchorMemo(item: OutboundItem): string {
         }
     }
 
-    const memo = [
-        "digisaka:v1",
-        `id=${item.id}`,
-        `d=${item.domain}`,
-        `s=${item.subject_id}`,
-        `v=${item.version}`,
-        `h=${payloadHash}`,
-        `p=${previousHash}`,
-    ].join("|");
+    let memo: string;
+    if (item.memo_format === "v1") {
+        if (item.memo_hash !== null) throw new Error("Legacy Memo rows cannot include memo_hash");
+        memo = [
+            "digisaka:v1",
+            `id=${item.id}`,
+            `d=${item.domain}`,
+            `s=${item.subject_id}`,
+            `v=${item.version}`,
+            `h=${payloadHash}`,
+            `p=${previousHash}`,
+        ].join("|");
+    } else if (item.memo_format === "v2") {
+        const memoHash = item.memo_hash?.toLowerCase() ?? "";
+        if (!HASH_PATTERN.test(memoHash)) {
+            throw new Error("Memo hash must be 64 lowercase hexadecimal characters");
+        }
+        memo = `digisaka:v2|h=${memoHash}`;
+    } else {
+        throw new Error("Unsupported Memo format");
+    }
 
     // The current Memo program accepts a much larger payload, but keeping a
     // strict bound prevents an accidental future expansion into business data.
@@ -54,18 +67,24 @@ export function buildAnchorMemo(item: OutboundItem): string {
 }
 
 export interface AnchorMemoIdentity {
-    outboundId: number;
+    outboundId: number | null;
     payloadHash: string;
 }
 
-/** Extract only the fields needed to replay an idempotent Laravel callback. */
+/**
+ * Parse the public digest and, for legacy v1 journal entries only, the old id.
+ * New v2 entries obtain their callback id from private journal metadata.
+ */
 export function parseAnchorMemoIdentity(memo: string): AnchorMemoIdentity | null {
-    const match = memo.match(
+    const current = memo.match(/^digisaka:v2\|h=([a-f0-9]{64})$/);
+    if (current) return { outboundId: null, payloadHash: current[1] as string };
+
+    const legacy = memo.match(
         /^digisaka:v1\|id=([1-9]\d*)\|d=[a-z0-9._-]{1,80}\|s=[1-9]\d*\|v=[1-9]\d*\|h=([a-f0-9]{64})\|p=(?:-|[a-f0-9]{64})$/,
     );
-    if (!match) return null;
+    if (!legacy) return null;
 
-    const outboundId = Number(match[1]);
+    const outboundId = Number(legacy[1]);
     if (!Number.isSafeInteger(outboundId) || outboundId <= 0) return null;
-    return { outboundId, payloadHash: match[2] as string };
+    return { outboundId, payloadHash: legacy[2] as string };
 }

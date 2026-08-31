@@ -7,6 +7,7 @@ import {
     deleteBatchOnSolana,
     closeBatchOnSolana,
 } from "../services/BatchService.js";
+import { routeParam } from "./routeParam.js";
 
 /**
  * @openapi
@@ -87,7 +88,7 @@ export const submitBatch = async (req: Request, res: Response) => {
  */
 export const checkBatch = async (req: Request, res: Response) => {
     try {
-        const batchIdParam = req.params.batchId;
+        const batchIdParam = routeParam(req.params.batchId);
         if (!batchIdParam) {
             return res.status(400).json({
                 success: false,
@@ -132,7 +133,7 @@ export const checkBatch = async (req: Request, res: Response) => {
  */
 export const getBatch = async (req: Request, res: Response) => {
     try {
-        const batchIdParam = req.params.batchId;
+        const batchIdParam = routeParam(req.params.batchId);
         if (!batchIdParam) {
             return res.status(400).json({
                 success: false,

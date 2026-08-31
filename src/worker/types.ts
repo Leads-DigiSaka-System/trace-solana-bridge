@@ -7,6 +7,8 @@ export interface OutboundItem {
     version: number;
     previous_hash: string | null;
     payload_hash: string;
+    memo_format: "v1" | "v2";
+    memo_hash: string | null;
     payload_uri: string;
     recovery_only: boolean;
     created_at: string | null;
@@ -48,6 +50,10 @@ export interface PreparedAnchor {
 export interface JournalRecord {
     /** Optional only so legacy on-disk records can be retained and quarantined. */
     network?: SolanaNetwork;
+    /** Private callback metadata for v2 hash-only public memos. */
+    outbound_id?: number;
+    payload_hash?: string;
+    memo_hash?: string | undefined;
     memo: string;
     signature: string;
     slot: number | null;

@@ -100,14 +100,13 @@ export class SolanaMemoAnchorService {
         this.anchorAddress = options.feePayer.publicKey.toBase58();
     }
 
-    async assertHealthy(): Promise<{ balanceLamports: number; genesisHash: string }> {
-        const [genesisHash, memoAccount, balance] = await this.withRpcTimeout(
+    async assertClusterHealthy(): Promise<{ genesisHash: string }> {
+        const [genesisHash, memoAccount] = await this.withRpcTimeout(
             Promise.all([
                 this.connection.getGenesisHash(),
                 this.connection.getAccountInfo(MEMO_PROGRAM_ID, "finalized"),
-                this.connection.getBalance(this.feePayer.publicKey, "finalized"),
             ]),
-            "Solana health check",
+            "Solana cluster health check",
         );
         if (genesisHash !== GENESIS_HASHES[this.network]) {
             throw new SolanaAnchorError(
@@ -123,6 +122,14 @@ export class SolanaMemoAnchorService {
                 true,
             );
         }
+        return { genesisHash };
+    }
+
+    async assertFunded(): Promise<{ balanceLamports: number }> {
+        const balance = await this.withRpcTimeout(
+            this.connection.getBalance(this.feePayer.publicKey, "finalized"),
+            "Solana fee-payer balance check",
+        );
         if (balance < 5_000) {
             throw new SolanaAnchorError(
                 "insufficient_funds",
@@ -130,7 +137,13 @@ export class SolanaMemoAnchorService {
                 false,
             );
         }
-        return { balanceLamports: balance, genesisHash };
+        return { balanceLamports: balance };
+    }
+
+    async assertHealthy(): Promise<{ balanceLamports: number; genesisHash: string }> {
+        const cluster = await this.assertClusterHealthy();
+        const funding = await this.assertFunded();
+        return { ...cluster, ...funding };
     }
 
     async findFinalizedByMemo(memo: string): Promise<AnchorReceipt | null> {
@@ -399,13 +412,14 @@ export class SolanaMemoAnchorService {
                 prepared.signature,
             );
         }
+        const rawTransaction = this.validatePreparedTransaction(prepared, memo);
         let ambiguousSendError: unknown;
 
         try {
             try {
                 const returnedSignature = await this.withTimeout(
                     this.connection.sendRawTransaction(
-                        Buffer.from(prepared.raw_transaction_base64, "base64"),
+                        rawTransaction,
                         {
                             maxRetries: this.sendMaxRetries,
                             preflightCommitment: "finalized",
@@ -499,6 +513,76 @@ export class SolanaMemoAnchorService {
                 prepared.signature,
             );
         }
+    }
+
+    private validatePreparedTransaction(prepared: PreparedAnchor, memo: string): Buffer {
+        const invalid = (message: string): never => {
+            throw new SolanaAnchorError(
+                "prepared_transaction_invalid",
+                message,
+                false,
+                prepared.signature,
+            );
+        };
+
+        let rawTransaction: Buffer;
+        let transaction: Transaction;
+        try {
+            rawTransaction = Buffer.from(prepared.raw_transaction_base64, "base64");
+            if (rawTransaction.length === 0) {
+                return invalid("Prepared transaction bytes are empty");
+            }
+            transaction = Transaction.from(rawTransaction);
+        } catch {
+            return invalid("Prepared transaction bytes are not a valid Solana transaction");
+        }
+
+        if (!transaction.feePayer?.equals(this.feePayer.publicKey)) {
+            return invalid("Prepared transaction fee payer does not match the configured signer");
+        }
+        if (transaction.recentBlockhash !== prepared.blockhash) {
+            return invalid("Prepared transaction blockhash does not match its journal metadata");
+        }
+        if (
+            transaction.signatures.length !== 1 ||
+            !transaction.signatures[0]?.publicKey.equals(this.feePayer.publicKey) ||
+            !transaction.signatures[0].signature
+        ) {
+            return invalid("Prepared transaction does not contain exactly one fee-payer signature");
+        }
+        if (encodeBase58(transaction.signatures[0].signature) !== prepared.signature) {
+            return invalid("Prepared transaction signature does not match its journal metadata");
+        }
+        if (!transaction.verifySignatures()) {
+            return invalid("Prepared transaction signature verification failed");
+        }
+
+        if (transaction.instructions.length !== 1) {
+            return invalid("Prepared transaction must contain exactly one Memo instruction");
+        }
+        const instruction = transaction.instructions[0];
+        if (
+            !instruction ||
+            !instruction.programId.equals(MEMO_PROGRAM_ID) ||
+            instruction.keys.length !== 0 ||
+            !instruction.data.equals(Buffer.from(memo, "utf8"))
+        ) {
+            return invalid("Prepared transaction does not contain the exact expected Memo instruction");
+        }
+
+        try {
+            const canonical = transaction.serialize({
+                requireAllSignatures: true,
+                verifySignatures: true,
+            });
+            if (!canonical.equals(rawTransaction)) {
+                return invalid("Prepared transaction bytes are not canonical");
+            }
+        } catch {
+            return invalid("Prepared transaction could not be canonically reserialized");
+        }
+
+        return rawTransaction;
     }
 
     private isSignedMemo(transaction: ParsedTransactionWithMeta, memo: string): boolean {

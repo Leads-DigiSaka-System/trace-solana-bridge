@@ -15,6 +15,8 @@ const item: OutboundItem = {
     version: 2,
     previous_hash: null,
     payload_hash: hash,
+    memo_format: "v2",
+    memo_hash: "c".repeat(64),
     payload_uri: "https://api.example.test/api/outbound/blockchain/payload/41",
     recovery_only: false,
     created_at: null,

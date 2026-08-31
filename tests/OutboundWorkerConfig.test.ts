@@ -22,6 +22,7 @@ describe("loadOutboundWorkerConfig", () => {
         expect(config.batchSize).toBe(8);
         expect(config.reconcileLookback).toBe(100);
         expect(config.reconcileTimeoutMs).toBe(15_000);
+        expect(config.requestTimeoutMs).toBe(20_000);
         expect(config.rpcTimeoutMs).toBe(10_000);
         expect(config.claimTtlMs).toBe(300_000);
         expect(config.journalPath).toBe("./data/outbound-anchor-journal-devnet.json");
@@ -31,6 +32,41 @@ describe("loadOutboundWorkerConfig", () => {
         expect(() =>
             loadOutboundWorkerConfig({ ...environment(), SOLANA_CLUSTER: "mainnet-beta" }),
         ).toThrow("Mainnet is locked");
+    });
+
+    it.each(["http://localhost:8000/api", "http://127.0.0.1:8000/api", "http://[::1]:8000/api"])(
+        "allows explicitly enabled loopback HTTP in development: %s",
+        (baseUrl) => {
+            const config = loadOutboundWorkerConfig({
+                ...environment(),
+                DIGISAKA_API_BASE: baseUrl,
+                NODE_ENV: "development",
+                ALLOW_INSECURE_LOCAL_HTTP: "true",
+            });
+            expect(config.laravelBaseUrl.toString()).toBe(baseUrl);
+        },
+    );
+
+    it("rejects remote cleartext endpoints even when the local HTTP flag is enabled", () => {
+        expect(() =>
+            loadOutboundWorkerConfig({
+                ...environment(),
+                DIGISAKA_API_BASE: "http://api.example.test/api",
+                NODE_ENV: "development",
+                ALLOW_INSECURE_LOCAL_HTTP: "true",
+            }),
+        ).toThrow("loopback host");
+    });
+
+    it("rejects loopback HTTP outside development and test", () => {
+        expect(() =>
+            loadOutboundWorkerConfig({
+                ...environment(),
+                DIGISAKA_API_BASE: "http://127.0.0.1:8000/api",
+                NODE_ENV: "production",
+                ALLOW_INSECURE_LOCAL_HTTP: "true",
+            }),
+        ).toThrow("development or test");
     });
 
     it("requires reconciliation to finish within the Laravel claim lease", () => {

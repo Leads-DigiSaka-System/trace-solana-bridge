@@ -30,6 +30,8 @@ The worker atomically locks that stable path for its lifetime; a second live pro
 same journal fails startup. Prefer one singleton worker. If replicas are intentionally deployed,
 give each replica a unique persistent (non-PID-derived) journal path. Stale locks are recovered
 automatically only when a dead PID can be proven on the same host; unverifiable locks fail closed.
+Stale-lock recovery is itself serialized by a `.lock.recovery` guard. If recovery is interrupted,
+inspect both lock files and verify that no worker is live before removing the guard manually.
 Without an explicit path, the stable default is cluster-specific
 (`./data/outbound-anchor-journal-<network>.json`).
 The worker persists each signed transaction before broadcasting it. If finalized transaction
@@ -86,6 +88,8 @@ METHOD + "\n" + ORIGINAL_URL + "\n" + X_TIMESTAMP + "\n" + X_HMAC_NONCE + "\n" +
 Sign this string with HMAC-SHA256 and send lowercase hexadecimal in `X-HMAC-Signature`.
 Nonces are single-use within the timestamp window. Authentication bypass works only when both
 `SKIP_HMAC_AUTH=true` and `NODE_ENV` is `development` or `test`.
+Likewise, `ALLOW_INSECURE_LOCAL_HTTP=true` permits HTTP only for loopback hosts and only when
+`NODE_ENV` is `development` or `test`; every remote endpoint still requires HTTPS.
 
 ## Security
 

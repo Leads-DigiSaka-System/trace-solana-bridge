@@ -3,6 +3,8 @@ import { Keypair } from "@solana/web3.js";
 import {
     assertFreshSubmissionAllowed,
     confirmAndCleanupJournal,
+    persistFinalizedAndConfirm,
+    prepareOutboundWorkerStartup,
     reconcileFinalizedJournalCallbacks,
 } from "../src/worker.js";
 
@@ -26,6 +28,8 @@ describe("worker journal cleanup", () => {
                 version: 1,
                 previous_hash: null,
                 payload_hash: "a".repeat(64),
+                memo_format: "v2",
+                memo_hash: "c".repeat(64),
                 payload_uri: "/api/outbound/blockchain/payload/1",
                 recovery_only: true,
                 created_at: null,
@@ -42,6 +46,8 @@ describe("worker journal cleanup", () => {
                 version: 1,
                 previous_hash: null,
                 payload_hash: "a".repeat(64),
+                memo_format: "v2",
+                memo_hash: "c".repeat(64),
                 payload_uri: "/api/outbound/blockchain/payload/1",
                 recovery_only: false,
                 created_at: null,
@@ -98,6 +104,82 @@ describe("worker journal cleanup", () => {
         expect(journal.delete).toHaveBeenCalledWith("memo");
     });
 
+    it("persists and confirms with one identical anchored timestamp", async () => {
+        const laravel = { confirm: jest.fn(async () => undefined) };
+        const journal = {
+            set: jest.fn(async () => undefined),
+            delete: jest.fn(async () => true),
+        };
+        const record = {
+            network: "devnet" as const,
+            memo: "memo",
+            signature: "signature",
+            slot: 123,
+            finalized_at: null,
+            anchor_address: "fee-payer",
+        };
+
+        const anchoredAt = await persistFinalizedAndConfirm(
+            laravel,
+            journal,
+            record.memo,
+            record,
+            {
+                id: 1,
+                workerId: "worker-1",
+                payloadHash: "a".repeat(64),
+                signature: record.signature,
+                slot: record.slot,
+                anchorAddress: record.anchor_address,
+            },
+        );
+
+        expect(journal.set).toHaveBeenCalledWith(
+            expect.objectContaining({ finalized_at: anchoredAt }),
+        );
+        expect(laravel.confirm).toHaveBeenCalledWith(
+            expect.objectContaining({ anchoredAt }),
+            undefined,
+        );
+    });
+
+    it("reuses an already persisted anchored timestamp", async () => {
+        const anchoredAt = "2026-08-27T00:00:00.000Z";
+        const laravel = { confirm: jest.fn(async () => undefined) };
+        const journal = {
+            set: jest.fn(async () => undefined),
+            delete: jest.fn(async () => true),
+        };
+
+        await expect(
+            persistFinalizedAndConfirm(
+                laravel,
+                journal,
+                "memo",
+                {
+                    network: "devnet",
+                    memo: "memo",
+                    signature: "signature",
+                    slot: 123,
+                    finalized_at: anchoredAt,
+                    anchor_address: "fee-payer",
+                },
+                {
+                    id: 1,
+                    workerId: "worker-1",
+                    payloadHash: "a".repeat(64),
+                    signature: "signature",
+                    slot: 123,
+                    anchorAddress: "fee-payer",
+                },
+            ),
+        ).resolves.toBe(anchoredAt);
+        expect(laravel.confirm).toHaveBeenCalledWith(
+            expect.objectContaining({ anchoredAt }),
+            undefined,
+        );
+    });
+
     it("replays finalized callbacks from a retained journal at startup", async () => {
         const memo = `digisaka:v1|id=7|d=buyback.settlement.saved|s=9|v=1|h=${"c".repeat(64)}|p=-`;
         const originalAnchorAddress = Keypair.generate().publicKey.toBase58();
@@ -134,6 +216,79 @@ describe("worker journal cleanup", () => {
             undefined,
         );
         expect(journal.delete).toHaveBeenCalledWith(memo);
+    });
+
+    it("recovers finalized callbacks before failing closed on fee-payer funding", async () => {
+        const order: string[] = [];
+        const memo = `digisaka:v1|id=17|d=buyback.settlement.saved|s=19|v=1|h=${"f".repeat(64)}|p=-`;
+        const anchorAddress = Keypair.generate().publicKey.toBase58();
+        const solana = {
+            assertClusterHealthy: jest.fn(async () => {
+                order.push("cluster");
+                return { genesisHash: "devnet-genesis" };
+            }),
+            assertFunded: jest.fn(async () => {
+                order.push("funding");
+                throw new Error("fee payer is not funded");
+            }),
+        };
+        const laravel = {
+            confirm: jest.fn(async () => {
+                order.push("callback");
+            }),
+        };
+        const journal = {
+            entries: jest.fn(() => [
+                {
+                    network: "devnet" as const,
+                    memo,
+                    signature: "signature-17",
+                    slot: 1717,
+                    finalized_at: "2026-08-27T00:00:00.000Z",
+                    anchor_address: anchorAddress,
+                },
+            ]),
+            delete: jest.fn(async () => true),
+        };
+
+        await expect(
+            prepareOutboundWorkerStartup(
+                solana,
+                laravel,
+                journal,
+                "worker-new",
+                "devnet",
+            ),
+        ).rejects.toThrow("fee payer is not funded");
+        expect(order).toEqual(["cluster", "callback", "funding"]);
+        expect(journal.delete).toHaveBeenCalledWith(memo);
+    });
+
+    it("does not replay callbacks when cluster validation fails", async () => {
+        const solana = {
+            assertClusterHealthy: jest.fn(async () => {
+                throw new Error("wrong cluster");
+            }),
+            assertFunded: jest.fn(async () => ({ balanceLamports: 100_000 })),
+        };
+        const laravel = { confirm: jest.fn(async () => undefined) };
+        const journal = {
+            entries: jest.fn(() => []),
+            delete: jest.fn(async () => true),
+        };
+
+        await expect(
+            prepareOutboundWorkerStartup(
+                solana,
+                laravel,
+                journal,
+                "worker-new",
+                "devnet",
+            ),
+        ).rejects.toThrow("wrong cluster");
+        expect(journal.entries).not.toHaveBeenCalled();
+        expect(laravel.confirm).not.toHaveBeenCalled();
+        expect(solana.assertFunded).not.toHaveBeenCalled();
     });
 
     it.each([

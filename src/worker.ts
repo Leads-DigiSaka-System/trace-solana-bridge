@@ -11,7 +11,7 @@ import {
 } from "./services/SolanaMemoAnchorService.js";
 import { classifyWorkerError } from "./worker/errors.js";
 import { buildAnchorMemo, parseAnchorMemoIdentity } from "./worker/memo.js";
-import type { AnchorReceipt, OutboundItem } from "./worker/types.js";
+import type { AnchorReceipt, JournalRecord, OutboundItem } from "./worker/types.js";
 import type { FailureDetails } from "./worker/types.js";
 
 dotenv.config();
@@ -72,6 +72,32 @@ export async function confirmAndCleanupJournal(
     }
 }
 
+export async function persistFinalizedAndConfirm(
+    laravel: Pick<LaravelOutboundClient, "confirm">,
+    journal: Pick<AnchorJournal, "set" | "delete">,
+    memo: string,
+    record: JournalRecord,
+    confirmation: Omit<Parameters<LaravelOutboundClient["confirm"]>[0], "anchoredAt">,
+    signal?: AbortSignal,
+): Promise<string> {
+    const anchoredAt = record.finalized_at || new Date().toISOString();
+    await journal.set({
+        ...record,
+        finalized_at: anchoredAt,
+    });
+    await confirmAndCleanupJournal(
+        laravel,
+        journal,
+        memo,
+        {
+            ...confirmation,
+            anchoredAt,
+        },
+        signal,
+    );
+    return anchoredAt;
+}
+
 export async function reconcileFinalizedJournalCallbacks(
     laravel: Pick<LaravelOutboundClient, "confirm">,
     journal: Pick<AnchorJournal, "entries" | "delete">,
@@ -88,8 +114,20 @@ export async function reconcileFinalizedJournalCallbacks(
             continue;
         }
         const identity = parseAnchorMemoIdentity(record.memo);
+        const outboundId = record.outbound_id ?? identity?.outboundId;
+        const legacyMemo = record.memo.startsWith("digisaka:v1|");
+        const payloadHash = record.payload_hash?.toLowerCase()
+            ?? (legacyMemo ? identity?.payloadHash : undefined);
+        const memoHash = record.memo_hash?.toLowerCase();
         if (
             !identity ||
+            !Number.isSafeInteger(outboundId) ||
+            Number(outboundId) <= 0 ||
+            typeof payloadHash !== "string" ||
+            !/^[a-f0-9]{64}$/.test(payloadHash) ||
+            (legacyMemo
+                ? identity.payloadHash !== payloadHash
+                : !memoHash || identity.payloadHash !== memoHash) ||
             !record.finalized_at ||
             !Number.isSafeInteger(record.slot) ||
             Number(record.slot) <= 0 ||
@@ -105,9 +143,9 @@ export async function reconcileFinalizedJournalCallbacks(
                 journal,
                 record.memo,
                 {
-                    id: identity.outboundId,
+                    id: Number(outboundId),
                     workerId,
-                    payloadHash: identity.payloadHash,
+                    payloadHash,
                     signature: record.signature,
                     slot: Number(record.slot),
                     anchorAddress: record.anchor_address,
@@ -120,7 +158,7 @@ export async function reconcileFinalizedJournalCallbacks(
             retained += 1;
             const failure = classifyWorkerError(error);
             log("warn", "finalized_journal_callback_retained", {
-                outbound_id: identity.outboundId,
+                outbound_id: Number(outboundId),
                 signature: record.signature,
                 error_code: failure.code,
                 message: failure.message,
@@ -129,6 +167,34 @@ export async function reconcileFinalizedJournalCallbacks(
     }
 
     return { confirmed, retained };
+}
+
+export async function prepareOutboundWorkerStartup(
+    solana: Pick<SolanaMemoAnchorService, "assertClusterHealthy" | "assertFunded">,
+    laravel: Pick<LaravelOutboundClient, "confirm">,
+    journal: Pick<AnchorJournal, "entries" | "delete">,
+    workerId: string,
+    currentNetwork: SolanaNetwork,
+    signal?: AbortSignal,
+): Promise<{
+    genesisHash: string;
+    balanceLamports: number;
+    callbackRecovery: { confirmed: number; retained: number };
+}> {
+    // A callback for an already-finalized transaction requires a trustworthy
+    // cluster, but no additional fee-payer funds. Recover it before enforcing
+    // the balance needed for polling and fresh submissions.
+    const cluster = await solana.assertClusterHealthy();
+    const callbackRecovery = await reconcileFinalizedJournalCallbacks(
+        laravel,
+        journal,
+        workerId,
+        currentNetwork,
+        signal,
+    );
+    const funding = await solana.assertFunded();
+
+    return { ...cluster, ...funding, callbackRecovery };
 }
 
 function isCanonicalSolanaAddress(value: unknown): value is string {
@@ -200,8 +266,8 @@ export async function runOutboundWorker(): Promise<void> {
     try {
         await journal.load();
 
-    const health = await solana.assertHealthy();
-    const callbackRecovery = await reconcileFinalizedJournalCallbacks(
+    const startup = await prepareOutboundWorkerStartup(
+        solana,
         laravel,
         journal,
         config.workerId,
@@ -212,11 +278,11 @@ export async function runOutboundWorker(): Promise<void> {
         worker_id: config.workerId,
         network: config.solanaNetwork,
         fee_payer: solana.anchorAddress,
-        balance_lamports: health.balanceLamports,
+        balance_lamports: startup.balanceLamports,
         batch_size: config.batchSize,
         poll_interval_ms: config.pollIntervalMs,
-        finalized_callbacks_recovered: callbackRecovery.confirmed,
-        journal_records_retained: callbackRecovery.retained,
+        finalized_callbacks_recovered: startup.callbackRecovery.confirmed,
+        journal_records_retained: startup.callbackRecovery.retained,
     });
 
     while (!stopRequested) {
@@ -309,6 +375,9 @@ export async function runOutboundWorker(): Promise<void> {
                 receipt = await solana.submitAndFinalize(memo, async (prepared) => {
                     await journal.set({
                         ...prepared,
+                        outbound_id: item.id,
+                        payload_hash: item.payload_hash,
+                        memo_hash: item.memo_hash ?? undefined,
                         memo,
                         slot: null,
                         finalized_at: null,
@@ -317,19 +386,22 @@ export async function runOutboundWorker(): Promise<void> {
             }
 
             const persisted = journal.get(memo);
-            await journal.set({
-                ...(persisted ?? {}),
-                network: config.solanaNetwork,
-                memo,
-                signature: receipt.signature,
-                slot: receipt.slot,
-                finalized_at: new Date().toISOString(),
-                anchor_address: solana.anchorAddress,
-            });
-            await confirmAndCleanupJournal(
+            await persistFinalizedAndConfirm(
                 laravel,
                 journal,
                 memo,
+                {
+                    ...(persisted ?? {}),
+                    network: config.solanaNetwork,
+                    outbound_id: item.id,
+                    payload_hash: item.payload_hash,
+                    memo_hash: item.memo_hash ?? undefined,
+                    memo,
+                    signature: receipt.signature,
+                    slot: receipt.slot,
+                    finalized_at: persisted?.finalized_at ?? null,
+                    anchor_address: solana.anchorAddress,
+                },
                 {
                     id: item.id,
                     workerId: config.workerId,
@@ -337,7 +409,6 @@ export async function runOutboundWorker(): Promise<void> {
                     signature: receipt.signature,
                     slot: receipt.slot,
                     anchorAddress: solana.anchorAddress,
-                    anchoredAt: new Date().toISOString(),
                 },
                 shutdown.signal,
             );

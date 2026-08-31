@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AnchorJournal } from "../src/services/AnchorJournal.js";
@@ -23,6 +23,45 @@ describe("AnchorJournal", () => {
             expect(JSON.parse(await readFile(journalPath, "utf8"))).toEqual({
                 version: 1,
                 records: {},
+            });
+        } finally {
+            await journal.releaseOwnership();
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    it("keeps in-memory and on-disk state unchanged when persistence fails", async () => {
+        const directory = await mkdtemp(path.join(os.tmpdir(), "digisaka-anchor-rollback-"));
+        const journalPath = path.join(directory, "journal.json");
+        const temporaryPath = `${journalPath}.${process.pid}.tmp`;
+        const journal = new AnchorJournal(journalPath);
+        const original = {
+            network: "devnet" as const,
+            memo: "durable-memo",
+            signature: "durable-signature",
+            slot: null,
+            finalized_at: null,
+        };
+        try {
+            await journal.acquireOwnership();
+            await journal.set(original);
+            await mkdir(temporaryPath);
+
+            await expect(
+                journal.set({
+                    ...original,
+                    memo: "not-durable",
+                    signature: "not-durable-signature",
+                }),
+            ).rejects.toBeDefined();
+            expect(journal.get("not-durable")).toBeUndefined();
+            expect(journal.get(original.memo)).toEqual(original);
+
+            await expect(journal.delete(original.memo)).rejects.toBeDefined();
+            expect(journal.get(original.memo)).toEqual(original);
+            expect(JSON.parse(await readFile(journalPath, "utf8"))).toEqual({
+                version: 1,
+                records: { [original.memo]: original },
             });
         } finally {
             await journal.releaseOwnership();
@@ -81,6 +120,38 @@ describe("AnchorJournal", () => {
         } finally {
             await first.releaseOwnership();
             await restarted.releaseOwnership();
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
+    it("allows only one simultaneous contender to replace a stale lock", async () => {
+        const directory = await mkdtemp(path.join(os.tmpdir(), "digisaka-anchor-race-"));
+        const journalPath = path.join(directory, "journal.json");
+        const lockPath = `${journalPath}.lock`;
+        const first = new AnchorJournal(journalPath);
+        const second = new AnchorJournal(journalPath);
+        try {
+            await writeFile(
+                lockPath,
+                `${JSON.stringify({
+                    version: 1,
+                    token: "stale-token",
+                    hostname: os.hostname(),
+                    pid: 2_147_483_647,
+                    started_at: "2026-08-27T00:00:00.000Z",
+                })}\n`,
+                "utf8",
+            );
+
+            const results = await Promise.allSettled([
+                first.acquireOwnership(),
+                second.acquireOwnership(),
+            ]);
+            expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+            expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+        } finally {
+            await first.releaseOwnership();
+            await second.releaseOwnership();
             await rm(directory, { recursive: true, force: true });
         }
     });

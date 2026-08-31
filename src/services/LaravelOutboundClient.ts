@@ -162,6 +162,8 @@ export class LaravelOutboundClient {
             "version",
             "previous_hash",
             "payload_hash",
+            "memo_format",
+            "memo_hash",
             "payload_uri",
             "created_at",
         ] as const;
@@ -354,12 +356,16 @@ export class LaravelOutboundClient {
         if (
             typeof value.domain !== "string" ||
             typeof value.payload_hash !== "string" ||
-            typeof value.payload_uri !== "string"
+            typeof value.payload_uri !== "string" ||
+            (value.memo_format !== "v1" && value.memo_format !== "v2")
         ) {
             throw new LaravelApiError(`Pending item ${index} is missing string fields`, 502, true);
         }
         if (value.previous_hash !== null && typeof value.previous_hash !== "string") {
             throw new LaravelApiError(`Pending item ${index} has an invalid previous_hash`, 502, true);
+        }
+        if (value.memo_hash !== null && typeof value.memo_hash !== "string") {
+            throw new LaravelApiError(`Pending item ${index} has an invalid memo_hash`, 502, true);
         }
         if (typeof value.recovery_only !== "boolean") {
             throw new LaravelApiError(
@@ -377,6 +383,13 @@ export class LaravelOutboundClient {
         ) {
             throw new LaravelApiError(`Pending item ${index} has an invalid previous_hash`, 502, false);
         }
+        if (
+            (value.memo_format === "v2" &&
+                (typeof value.memo_hash !== "string" || !/^[a-fA-F0-9]{64}$/.test(value.memo_hash))) ||
+            (value.memo_format === "v1" && value.memo_hash !== null)
+        ) {
+            throw new LaravelApiError(`Pending item ${index} has an invalid Memo commitment`, 502, false);
+        }
         return {
             id: Number(value.id),
             domain: value.domain,
@@ -387,6 +400,8 @@ export class LaravelOutboundClient {
                     ? value.previous_hash.toLowerCase()
                     : null,
             payload_hash: value.payload_hash.toLowerCase(),
+            memo_format: value.memo_format,
+            memo_hash: typeof value.memo_hash === "string" ? value.memo_hash.toLowerCase() : null,
             payload_uri: value.payload_uri,
             recovery_only: value.recovery_only,
             created_at: typeof value.created_at === "string" ? value.created_at : null,

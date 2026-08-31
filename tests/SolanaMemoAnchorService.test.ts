@@ -29,6 +29,30 @@ function service(
     });
 }
 
+async function capturePrepared(
+    feePayer: Keypair,
+    memo: string,
+): Promise<PreparedAnchor> {
+    let prepared: PreparedAnchor | undefined;
+    const anchorService = service(
+        {
+            getLatestBlockhash: jest.fn().mockResolvedValue({
+                blockhash: "11111111111111111111111111111111",
+                lastValidBlockHeight: 999,
+            }),
+        },
+        feePayer,
+    );
+    await expect(
+        anchorService.submitAndFinalize(memo, async (candidate) => {
+            prepared = candidate;
+            throw new Error("prepared-captured");
+        }),
+    ).rejects.toThrow("prepared-captured");
+    if (!prepared) throw new Error("Prepared transaction was not captured");
+    return prepared;
+}
+
 function parsedMemo(feePayer: Keypair, memo: string, signature: string, slot = 987) {
     return {
         slot,
@@ -54,6 +78,26 @@ describe("SolanaMemoAnchorService", () => {
             genesisHash: DEVNET_GENESIS,
             balanceLamports: 100_000,
         });
+    });
+
+    it("validates the cluster independently before enforcing fee-payer funding", async () => {
+        const connection = {
+            getGenesisHash: jest.fn().mockResolvedValue(DEVNET_GENESIS),
+            getAccountInfo: jest.fn().mockResolvedValue({ executable: true }),
+            getBalance: jest.fn().mockResolvedValue(4_999),
+        };
+        const anchorService = service(connection);
+
+        await expect(anchorService.assertClusterHealthy()).resolves.toEqual({
+            genesisHash: DEVNET_GENESIS,
+        });
+        expect(connection.getBalance).not.toHaveBeenCalled();
+
+        await expect(anchorService.assertFunded()).rejects.toMatchObject({
+            code: "insufficient_funds",
+            retryable: false,
+        });
+        expect(connection.getBalance).toHaveBeenCalledTimes(1);
     });
 
     it("rejects an RPC connected to a different cluster", async () => {
@@ -373,8 +417,9 @@ describe("SolanaMemoAnchorService", () => {
     it("never rotates an expired signature that has any recorded status", async () => {
         const feePayer = Keypair.generate();
         const memo = `digisaka:v1|id=5|d=buyback.application|s=9|v=1|h=${"f".repeat(64)}|p=-`;
-        const signature = "known-signature";
-        const rawBytes = Buffer.from("same-signed-transaction");
+        const prepared = await capturePrepared(feePayer, memo);
+        const signature = prepared.signature;
+        const rawBytes = Buffer.from(prepared.raw_transaction_base64, "base64");
         const sendRawTransaction = jest.fn().mockResolvedValue(signature);
         const connection = {
             getParsedTransaction: jest
@@ -403,21 +448,61 @@ describe("SolanaMemoAnchorService", () => {
         await expect(
             service(connection, feePayer).recoverJournaled(
                 {
-                    network: "devnet",
                     memo,
-                    signature,
                     slot: null,
                     finalized_at: null,
-                    submitted_at: "2026-08-27T00:00:00.000Z",
-                    raw_transaction_base64: rawBytes.toString("base64"),
-                    blockhash: "expired-blockhash",
-                    last_valid_block_height: 999,
+                    ...prepared,
                 },
                 memo,
             ),
         ).resolves.toEqual({ signature, slot: 777, source: "journal" });
         expect(sendRawTransaction).toHaveBeenCalledTimes(1);
         expect((sendRawTransaction.mock.calls[0]?.[0] as Buffer).equals(rawBytes)).toBe(true);
+    });
+
+    it("rejects journal transaction integrity mismatches before raw submission", async () => {
+        const feePayer = Keypair.generate();
+        const otherFeePayer = Keypair.generate();
+        const memo = `digisaka:v1|id=6|d=buyback.application|s=9|v=1|h=${"6".repeat(64)}|p=-`;
+        const otherMemo = `digisaka:v1|id=6|d=buyback.application|s=9|v=1|h=${"7".repeat(64)}|p=-`;
+        const prepared = await capturePrepared(feePayer, memo);
+        const preparedForOtherMemo = await capturePrepared(feePayer, otherMemo);
+        const preparedForOtherPayer = await capturePrepared(otherFeePayer, memo);
+        const records = [
+            { ...prepared, signature: "journal-signature-does-not-match" },
+            { ...prepared, blockhash: "journal-blockhash-does-not-match" },
+            preparedForOtherMemo,
+            preparedForOtherPayer,
+        ];
+
+        for (const candidate of records) {
+            const sendRawTransaction = jest.fn();
+            const connection = {
+                getParsedTransaction: jest.fn().mockResolvedValue(null),
+                getSignatureStatuses: jest.fn().mockResolvedValue({
+                    context: { slot: 1 },
+                    value: [null],
+                }),
+                getBlockHeight: jest.fn().mockResolvedValue(1),
+                sendRawTransaction,
+            };
+
+            await expect(
+                service(connection, feePayer).recoverJournaled(
+                    {
+                        ...candidate,
+                        memo,
+                        slot: null,
+                        finalized_at: null,
+                    },
+                    memo,
+                ),
+            ).rejects.toMatchObject({
+                code: "prepared_transaction_invalid",
+                retryable: false,
+            });
+            expect(sendRawTransaction).not.toHaveBeenCalled();
+        }
     });
 
     it("rejects cross-network journal recovery before any RPC or raw replay", async () => {

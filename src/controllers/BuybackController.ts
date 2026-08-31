@@ -11,6 +11,7 @@ import {
     deleteBuybackOnSolana,
     closeBuybackOnSolana,
 } from "../services/BuybackService.js";
+import { routeParam } from "./routeParam.js";
 
 /**
  * @openapi
@@ -94,7 +95,7 @@ export const submitBuyback = async (req: Request, res: Response) => {
  */
 export const checkBuyback = async (req: Request, res: Response) => {
     try {
-        const { buybackId } = req.params;
+        const buybackId = routeParam(req.params.buybackId);
         if (!buybackId)
             return res
                 .status(400)
@@ -132,7 +133,7 @@ export const checkBuyback = async (req: Request, res: Response) => {
  */
 export const getBuyback = async (req: Request, res: Response) => {
     try {
-        const { buybackId } = req.params;
+        const buybackId = routeParam(req.params.buybackId);
         if (!buybackId)
             return res
                 .status(400)

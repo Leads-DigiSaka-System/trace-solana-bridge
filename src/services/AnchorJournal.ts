@@ -27,6 +27,7 @@ interface JournalLock {
 export class AnchorJournal {
     private readonly filePath: string;
     private readonly lockPath: string;
+    private readonly recoveryLockPath: string;
     private records = new Map<string, JournalRecord>();
     private lockHandle: FileHandle | undefined;
     private lockToken: string | undefined;
@@ -34,25 +35,43 @@ export class AnchorJournal {
     constructor(filePath: string) {
         this.filePath = path.resolve(filePath);
         this.lockPath = `${this.filePath}.lock`;
+        this.recoveryLockPath = `${this.lockPath}.recovery`;
     }
 
     async acquireOwnership(): Promise<void> {
         if (this.lockHandle) throw new Error("Anchor journal ownership is already held");
         await mkdir(path.dirname(this.filePath), { recursive: true });
 
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-            try {
-                await this.createOwnershipLock();
-                return;
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-                if (attempt === 0 && (await this.removeStaleSameHostLock())) continue;
+        try {
+            await this.createOwnershipLock();
+            return;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+
+        // Serialize stale-lock recovery through a second exclusive file. The
+        // guard remains held until the replacement ownership lock exists, so
+        // two simultaneous restarts cannot both remove/replace the same stale
+        // path. A guard left by a crash fails closed and requires operator
+        // inspection instead of risking concurrent journal writers.
+        const recoveryHandle = await this.tryAcquireRecoveryGuard();
+        if (!recoveryHandle) {
+            throw new Error(
+                `Anchor journal ownership or stale-lock recovery is already active: ${this.lockPath}`,
+            );
+        }
+
+        try {
+            if (!(await this.removeStaleSameHostLock())) {
                 throw new Error(
                     `Anchor journal is already owned by another live or unverifiable process: ${this.lockPath}`,
                 );
             }
+            await this.createOwnershipLock();
+        } finally {
+            await recoveryHandle.close().catch(() => undefined);
+            await unlink(this.recoveryLockPath).catch(() => undefined);
         }
-        throw new Error(`Cannot acquire anchor journal ownership: ${this.lockPath}`);
     }
 
     async releaseOwnership(): Promise<void> {
@@ -98,24 +117,29 @@ export class AnchorJournal {
 
     async set(record: JournalRecord): Promise<void> {
         this.assertOwned();
-        this.records.set(record.memo, record);
-        await this.persist();
+        const nextRecords = new Map(this.records);
+        nextRecords.set(record.memo, record);
+        await this.persist(nextRecords);
+        this.records = nextRecords;
     }
 
     async delete(memo: string): Promise<boolean> {
         this.assertOwned();
-        if (!this.records.delete(memo)) return false;
-        await this.persist();
+        if (!this.records.has(memo)) return false;
+        const nextRecords = new Map(this.records);
+        nextRecords.delete(memo);
+        await this.persist(nextRecords);
+        this.records = nextRecords;
         return true;
     }
 
-    private async persist(): Promise<void> {
+    private async persist(records: ReadonlyMap<string, JournalRecord>): Promise<void> {
         const directory = path.dirname(this.filePath);
         await mkdir(directory, { recursive: true });
         const temporary = `${this.filePath}.${process.pid}.tmp`;
         const data: JournalFile = {
             version: 1,
-            records: Object.fromEntries(this.records),
+            records: Object.fromEntries(records),
         };
         let temporaryHandle: FileHandle | undefined;
         try {
@@ -156,6 +180,31 @@ export class AnchorJournal {
                 await handle.close().catch(() => undefined);
                 await unlink(this.lockPath).catch(() => undefined);
             }
+            throw error;
+        }
+    }
+
+    private async tryAcquireRecoveryGuard(): Promise<FileHandle | null> {
+        let handle: FileHandle | undefined;
+        try {
+            handle = await open(this.recoveryLockPath, "wx", 0o600);
+            if (process.platform !== "win32") await handle.chmod(0o600);
+            await handle.writeFile(
+                `${JSON.stringify({
+                    version: 1,
+                    token: randomUUID(),
+                    hostname: os.hostname(),
+                    pid: process.pid,
+                    started_at: new Date().toISOString(),
+                } satisfies JournalLock)}\n`,
+                "utf8",
+            );
+            await handle.sync();
+            return handle;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "EEXIST") return null;
+            await handle?.close().catch(() => undefined);
+            await unlink(this.recoveryLockPath).catch(() => undefined);
             throw error;
         }
     }

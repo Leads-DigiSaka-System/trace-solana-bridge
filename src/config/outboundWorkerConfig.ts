@@ -72,15 +72,35 @@ function boundedIntegerWithAlias(
     return boundedInteger(effective, primary, fallback, minimum, maximum);
 }
 
-function httpUrl(raw: string, name: string, allowHttp: boolean): URL {
+function isLoopbackHostname(hostname: string): boolean {
+    const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (normalized === "localhost" || normalized === "::1") return true;
+    const octets = normalized.split(".");
+    return (
+        octets.length === 4 &&
+        octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255) &&
+        Number(octets[0]) === 127
+    );
+}
+
+function httpUrl(raw: string, name: string, allowLoopbackHttp: boolean): URL {
     let url: URL;
     try {
         url = new URL(raw);
     } catch {
         throw new Error(`${name} must be a valid absolute URL`);
     }
-    if (url.protocol !== "https:" && !(allowHttp && url.protocol === "http:")) {
-        throw new Error(`${name} must use HTTPS (or explicitly allow HTTP for local development)`);
+    if (
+        url.protocol !== "https:" &&
+        !(
+            allowLoopbackHttp &&
+            url.protocol === "http:" &&
+            isLoopbackHostname(url.hostname)
+        )
+    ) {
+        throw new Error(
+            `${name} must use HTTPS (HTTP is allowed only for a loopback host in development or test)`,
+        );
     }
     if (url.username || url.password) {
         throw new Error(`${name} must not contain URL credentials`);
@@ -125,7 +145,9 @@ export function loadFeePayerFromEnv(env: NodeJS.ProcessEnv): Keypair {
 export function loadOutboundWorkerConfig(
     env: NodeJS.ProcessEnv = process.env,
 ): OutboundWorkerConfig {
-    const allowHttp = env.ALLOW_INSECURE_LOCAL_HTTP === "true";
+    const allowHttp =
+        env.ALLOW_INSECURE_LOCAL_HTTP === "true" &&
+        (env.NODE_ENV === "development" || env.NODE_ENV === "test");
     const laravelBaseUrl = httpUrl(
         requireTextWithAlias(env, "LARAVEL_API_BASE_URL", "DIGISAKA_API_BASE"),
         "LARAVEL_API_BASE_URL",
@@ -170,7 +192,10 @@ export function loadOutboundWorkerConfig(
         );
     }
 
-    const requestTimeoutMs = boundedInteger(env, "OUTBOUND_REQUEST_TIMEOUT_MS", 10_000, 1_000, 60_000);
+    // Laravel independently verifies both the cluster genesis hash and the
+    // finalized transaction before accepting a callback. Leave enough time
+    // for both RPC reads while still fitting inside the claim lease budget.
+    const requestTimeoutMs = boundedInteger(env, "OUTBOUND_REQUEST_TIMEOUT_MS", 20_000, 1_000, 60_000);
     const reconcileTimeoutMs = boundedInteger(
         env,
         "SOLANA_RECONCILE_TIMEOUT_MS",
